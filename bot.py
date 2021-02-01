@@ -15,12 +15,13 @@ async def on_ready():
 @bot.event
 async def on_message(message):
     if message.author != bot.user:
-        time = datetime.now()
-        print(f"{time} ||||| Message from {message.author} : {message.content}")
+        with open("logs.txt","a") as logs_file:
+            time = datetime.now()
+            logs_file.write(f"{time} ||||| Message from {message.author} : {message.content} \n")
     await bot.process_commands(message)
 
 @bot.command()
 async def echo(ctx,message):
     await ctx.send(message)
-    
+
 bot.run(TOKEN)
