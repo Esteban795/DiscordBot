@@ -23,14 +23,18 @@ async def on_message(message):
     await bot.process_commands(message)
 
 @bot.command()
-async def echo(ctx,*args):
+async def echo(ctx, *args):
+    print(ctx.author.id)
     await ctx.send(" ".join(args))
 
-dico
 @bot.command()
-async def chucknorris(ctx,message):
-    r = requests.get("http://api.icndb.com/jokes/random")
-    if r.json()['type'] == 'success':
-        await ctx.send(r.json()['value']['joke'])
+async def chucknorris(ctx,*args):
+    if len(args) == 0:
+        r = requests.get("http://api.icndb.com/jokes/random")
+        if r.json()['type'] == 'success':
+            await ctx.send(r.json()['value']['joke'])
+    else:
+        print(" ".join(args))
+
 
 bot.run(TOKEN)
