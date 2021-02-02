@@ -29,42 +29,42 @@ async def echo(ctx, *args):
 async def chucknorris(ctx,*args):
     if len(args) == 0:
         r = requests.get("http://api.icndb.com/jokes/random")
-        if r.json()['type'] == 'success':
+        if r.json()['type'] == 'success': # checks if the request was a success
             await ctx.send(r.json()['value']['joke'])
         else:
             await ctx.send("Something went wrong. Investigating on it !")
 
 @bot.command()
-async def giverole(ctx, user: discord.Member, role: discord.Role):
+async def giverole(ctx, user: discord.Member, role: discord.Role): # Gives "role" to "user"
     await user.add_roles(role)
 
 @bot.command()
-async def removerole(ctx,user : discord.Member, role:discord.Role):
+async def removerole(ctx,user : discord.Member, role:discord.Role): #Removes "role" from "user"
     await user.remove_roles(role)
 
 @bot.command()
-async def kick(ctx, user: discord.Member, *string):
+async def kick(ctx, user: discord.Member, *string): #Kicks "user", and send them a DM with "discord they were kicked, by who and for what reason"
     reasons = " ".join(string)
     await user.send(f"You've been kicked from {ctx.guild} by {ctx.author}. Reason : {reasons}")
     await user.kick(reason=reasons)
     await ctx.author.send(f"{user} has been kicked successfully. Reason : {reasons}")
 
 @bot.command()
-async def ban(ctx,user : discord.Member, *string):
+async def ban(ctx,user : discord.Member, *string): #Same as kick, but with ban
     reasons = " ".join(string)
     await user.send(f"You were kicked banned from {ctx.guild} by {ctx.author}. Reason : {reasons}")
     await user.ban(reason=reasons)
     await ctx.author.send(f"{user} has been successfully banned. Reason : {reasons}")
 
 @bot.command()
-async def banlist(ctx):
+async def banlist(ctx): #Displays current banlist from the server
     bans = await ctx.guild.bans()
     if len(bans) == 0:
         await ctx.send("Uh oh. Looks like no one is currently banned on this server ! Keep it up.")
     else:
         banlist = ""
         for ban in bans:
-            banlist += 'User "{}" was banned for {} \n'.format(ban[1],ban[0])
+            banlist += 'User "{}" was banned for {} \n'.format(ban[1],ban[0]) #ban[1] == name + discriminator from the banned user, ban[0] == reason they got banned for
         await ctx.send(banlist)
 
 bot.run(TOKEN)
