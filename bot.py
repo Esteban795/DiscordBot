@@ -7,14 +7,14 @@ import requests
 
 load_dotenv()
 bot = commands.Bot(command_prefix='$')
-TOKEN = os.getenv('BOT_TOKEN')
+TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
 
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
 
 @bot.event
-async def on_message(message):
+async def on_message(message): # Writes any message send by users who are not this discord bot
     if message.author != bot.user:
         with open("logs.txt","a") as logs_file:
             time = datetime.now()
@@ -22,7 +22,7 @@ async def on_message(message):
     await bot.process_commands(message)
 
 @bot.command()
-async def echo(ctx, *args):
+async def echo(ctx, *args): #Repeat whatever you say
     await ctx.send(" ".join(args))
 
 @bot.command()
