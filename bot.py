@@ -61,7 +61,7 @@ async def unban(ctx, user:str):
     bans = await ctx.guild.bans()
     for entry in bans:
         person = "{0.name}#{0.discriminator}".format(entry.user)
-        print(person)
+        print(person) 
     
 @bot.command()
 @commands.has_permissions(administrator = True)
