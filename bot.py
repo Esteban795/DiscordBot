@@ -57,8 +57,11 @@ async def ban(ctx,user : discord.Member, *string): #Same as kick, but with ban
     await user.ban(reason=reasons)
     
 @bot.command()
-async def unban(ctx, user: discord.User):
-    pass
+async def unban(ctx, user:str):
+    bans = await ctx.guild.bans()
+    for entry in bans:
+        person = "{0.name}#{0.discriminator}".format(entry.user)
+        print(person)
     
 @bot.command()
 @commands.has_permissions(administrator = True)
@@ -67,7 +70,7 @@ async def banlist(ctx): #Displays current banlist from the server
     if len(bans) == 0:
         await ctx.send("Uh oh. Looks like no one is currently banned on this server ! Keep it up.")
     else:
-        pretty_list = ["• {0.id} ({0.name}#{0.discriminator})".format(entry.user) for entry in bans]
+        pretty_list = ["• {0.name}#{0.discriminator}".format(entry.user) for entry in bans]
         await ctx.send("**Ban list:** \n{}".format("\n".join(pretty_list)))
 
 bot.run(TOKEN)
