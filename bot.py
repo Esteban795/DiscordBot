@@ -43,28 +43,31 @@ async def removerole(ctx,user : discord.Member, role:discord.Role): #Removes "ro
     await user.remove_roles(role)
 
 @bot.command()
+@commands.has_permissions(kick_members = True)
 async def kick(ctx, user: discord.Member, *string): #Kicks "user", and send them a DM with "discord they were kicked, by who and for what reason"
     reasons = " ".join(string)
-    await user.send(f"You've been kicked from {ctx.guild} by {ctx.author}. Reason : {reasons}")
+    await user.send(f"You were kicked from {ctx.guild} by {ctx.author}. Reason : {reasons}")
     await user.kick(reason=reasons)
-    await ctx.author.send(f"{user} has been kicked successfully. Reason : {reasons}")
 
 @bot.command()
+@commands.has_permissions(ban_members = True)
 async def ban(ctx,user : discord.Member, *string): #Same as kick, but with ban
     reasons = " ".join(string)
-    await user.send(f"You were kicked banned from {ctx.guild} by {ctx.author}. Reason : {reasons}")
+    await user.send(f"You were banned from {ctx.guild} by {ctx.author}. Reason : {reasons}")
     await user.ban(reason=reasons)
-    await ctx.author.send(f"{user} has been successfully banned. Reason : {reasons}")
-
+    
 @bot.command()
+async def unban(ctx, user: discord.User):
+    pass
+    
+@bot.command()
+@commands.has_permissions(administrator = True)
 async def banlist(ctx): #Displays current banlist from the server
     bans = await ctx.guild.bans()
     if len(bans) == 0:
         await ctx.send("Uh oh. Looks like no one is currently banned on this server ! Keep it up.")
     else:
-        banlist = ""
-        for ban in bans:
-            banlist += 'User "{}" was banned for {} \n'.format(ban[1],ban[0]) #ban[1] == name + discriminator from the banned user, ban[0] == reason they got banned for
-        await ctx.send(banlist)
+        pretty_list = ["• {0.id} ({0.name}#{0.discriminator})".format(entry.user) for entry in bans]
+        await ctx.send("**Ban list:** \n{}".format("\n".join(pretty_list)))
 
 bot.run(TOKEN)
