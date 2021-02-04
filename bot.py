@@ -23,8 +23,8 @@ async def on_message(message): # Writes any message send by users who are not th
         with open("logs.txt","a") as logs_file:
             time = datetime.now()
             logs_file.write(f"{time} ||||| Message from {message.author} : {message.content} \n")
-    if message.content.lower() in ["bonjour",'salut','yo','slt','bonjur']:
-        await message.channel.send("Salut {} !".format(message.author.display_name))
+    if message.content.lower() in ["hello",'hi','greetings','greet','hi there']:
+        await message.channel.send("Hey {} !".format(message.author.display_name))
     await bot.process_commands(message)
 
 @bot.command()
