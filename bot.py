@@ -55,14 +55,22 @@ async def ban(ctx,user : discord.Member, *string): #Same as kick, but with ban
     reasons = " ".join(string)
     await user.send(f"You were banned from {ctx.guild} by {ctx.author}. Reason : {reasons}")
     await user.ban(reason=reasons)
-    
+
 @bot.command()
-async def unban(ctx, user:str):
-    bans = await ctx.guild.bans()
-    for entry in bans:
-        person = "{0.name}#{0.discriminator}".format(entry.user)
-        print(person) 
-    
+@commands.has_permissions(administrator = True)
+async def purge(ctx,amount:int):
+    await ctx.send("On my way !")
+    await ctx.channel.purge(limit=amount + 2)
+
+@bot.command()
+@commands.has_permissions(administrator = True)
+async def has_perm(ctx,member:discord.Member=False):
+    if not member:
+        perms = ctx.author.guild_permissions
+    else:
+        perms = member.guild_permissions
+
+        
 @bot.command()
 @commands.has_permissions(administrator = True)
 async def banlist(ctx): #Displays current banlist from the server
@@ -70,7 +78,8 @@ async def banlist(ctx): #Displays current banlist from the server
     if len(bans) == 0:
         await ctx.send("Uh oh. Looks like no one is currently banned on this server ! Keep it up.")
     else:
-        pretty_list = ["• {0.name}#{0.discriminator}".format(entry.user) for entry in bans]
+        pretty_list = ["• {0.name}#{0.discriminator} for ".format(entry.user) for entry in bans]
         await ctx.send("**Ban list:** \n{}".format("\n".join(pretty_list)))
+
 
 bot.run(TOKEN)
