@@ -15,7 +15,7 @@ async def on_ready():
 
 @bot.event
 async def on_command_error(ctx,err:discord.errors):
-    await ctx.send(err)
+    await ctx.send("NO WAY ! I'M EXPERIENCING TROUBLE. Joking. Investigating ! ")
 
 @bot.event
 async def on_message(message): # Writes any message send by users who are not this discord bot
@@ -58,7 +58,7 @@ async def kick(ctx, user: discord.Member, *string): #Kicks "user", and send them
     await user.kick(reason=reasons)
 
 @bot.command()
-@commands.has_permissions(administrator = True)
+@commands.has_permissions(manage_messages = True)
 async def purge(ctx,Amount:int):
     await ctx.channel.purge(limit=Amount + 2)
 
@@ -69,7 +69,7 @@ async def banlist(ctx): #Displays current banlist from the server
     if len(bans) == 0:
         await ctx.send("Uh oh. Looks like no one is currently banned on this server ! Keep it up.")
     else:
-        pretty_list = ["• {0.name}#{0.discriminator} for ".format(entry.user) for entry in bans]
+        pretty_list = ["• {}#{} for : {} ".format(entry.user.name,entry.user.discriminator,entry[0]) for entry in bans]
         await ctx.send("**Ban list:** \n{}".format("\n".join(pretty_list)))
 
 @bot.command()
@@ -78,5 +78,22 @@ async def ban(ctx,user : discord.Member, *string): #Same as kick, but with ban
     reasons = " ".join(string)
     await user.send(f"You were banned from {ctx.guild} by {ctx.author}. Reason : {reasons}")
     await user.ban(reason=reasons)
+
+@bot.command()
+@commands.has_permissions(administrator = True)
+async def perms(ctx,member:discord.Member):
+    perms = ""
+    for i in member.guild_permissions:
+        perms += "{} : {} \n".format(i[0],i[1])
+    await ctx.author.send(perms)
+
+@bot.command()
+@commands.has_permissions(ban_members = True)
+async def unban(ctx,person : str):
+    bans = await ctx.guild.bans()
+    for i in bans:
+        await ctx.send(i)
+
+
 
 bot.run(TOKEN)
