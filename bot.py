@@ -15,7 +15,8 @@ async def on_ready():
 
 @bot.event
 async def on_command_error(ctx,err:discord.errors):
-    await ctx.send("NO WAY ! I'M EXPERIENCING TROUBLE. Joking. Investigating ! ")
+    pass
+
 
 @bot.event
 async def on_message(message): # Writes any message send by users who are not this discord bot
@@ -89,15 +90,48 @@ async def perms(ctx,member:discord.Member):
 
 @bot.command()
 @commands.has_permissions(ban_members = True)
-async def unban(ctx,person : str):
+async def unban(ctx,person=None):
+    if person is None:
+        await ctx.send("You need to tell me who I need to unban !")
+        return
     bans = await ctx.guild.bans()
+    if len(bans) == 0:
+        await ctx.send("Uh oh. Looks like no one is currently banned on this server ! Keep it up.")
+        return
+    count = 0
+    string = ""
     for entry in bans:
         if "{0.name}#{0.discriminator}".format(entry.user) == person:
+            count += 1
             user = await bot.fetch_user(entry.user.id)
+            await ctx.send("{} is now free to join us again !".format(user.name))
             await ctx.guild.unban(user)
-        else:
-            if entry.user.name == person:
+            break
+        elif entry.user.name == person:
+                count += 1
+                string += "{0.name}#{0.discriminator}\n".format(entry.user)
+    if count >= 1:
+        await ctx.send("Watch out ! There are {} guys named '{}' who are banned. Take a look at who you want to unban :\n{}".format(count,person,string))   
+        def check(m):
+            return m.author == ctx.author 
+        ans = await bot.wait_for('message',check=check, timeout= 10)
+        lines = string.split("\n")
+        temp = lines[int("{0.content}".format(ans)) - 1]
+        for entry in bans:
+            if "{0.name}#{0.discriminator}".format(entry.user) == temp:
                 user = await bot.fetch_user(entry.user.id)
-                await ctx.guild.unban(user) 
-                
+                await ctx.guild.unban(user)
+    else:
+        await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
+
+
+@bot.command()
+async def test(ctx,*args):
+    msg = " ".join(args)
+    await ctx.send("You sure about saying {} ?".format(msg))
+    def check(m):
+        return m.author == ctx.author 
+    ans = await bot.wait_for('message',check=check, timeout= 10)
+    await ctx.send("And then {0.content}".format(ans))
+    
 bot.run(TOKEN)
