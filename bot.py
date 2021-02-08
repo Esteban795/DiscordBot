@@ -95,6 +95,9 @@ async def unban(ctx,person : str):
         if "{0.name}#{0.discriminator}".format(entry.user) == person:
             user = await bot.fetch_user(entry.user.id)
             await ctx.guild.unban(user)
-
-
+        else:
+            if entry.user.name == person:
+                user = await bot.fetch_user(entry.user.id)
+                await ctx.guild.unban(user) 
+                
 bot.run(TOKEN)
