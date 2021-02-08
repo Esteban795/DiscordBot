@@ -91,9 +91,10 @@ async def perms(ctx,member:discord.Member):
 @commands.has_permissions(ban_members = True)
 async def unban(ctx,person : str):
     bans = await ctx.guild.bans()
-    for i in bans:
-        await ctx.send(i)
-
+    for entry in bans:
+        if "{0.name}#{0.discriminator}".format(entry.user) == person:
+            user = await bot.fetch_user(entry.user.id)
+            await ctx.guild.unban(user)
 
 
 bot.run(TOKEN)
