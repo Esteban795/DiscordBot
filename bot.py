@@ -15,11 +15,6 @@ async def on_ready():
     print(f'Logged as {bot.user.name}')
 
 @bot.event
-async def on_member_join(member:discord.Member):
-    await member.send('Private message')
-
-    
-@bot.event
 async def on_message(message): # logs file
     if message.author != bot.user:
         with open("logs.txt","a") as logs_file:
@@ -136,36 +131,12 @@ async def numberguessing(ctx,limit:int):
     randomnumber = randint(1,limit)
     while continuer:
         def check(m):
-<<<<<<< HEAD
-=======
-            return m.author == ctx.author 
-        ans = await bot.wait_for('message',check=check, timeout= 10)
-        lines = string.split("\n")
-        identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
-        user = await bot.fetch_user(identifier)
-        await ctx.guild.unban(user)
-    else:
-        await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
-
-@bot.command()
-async def numberguessing(ctx,limit:int):
-    await ctx.send("Let's go ! You will have 10 seconds to answer each time !")
-    continuer = True
-    score = 0
-    randomnumber = randint(1,limit)
-    while continuer:
-        def check(m):
->>>>>>> fe1028d213229281fff50d9b9d8a308930250f54
             return m.author == ctx.author
         response = await bot.wait_for('message',check=check,timeout=10)   
         answer = int("{0.content}".format(response))
         if answer == randomnumber:
             score += 1
-<<<<<<< HEAD
             await ctx.send("It only took you {} tries to guess the number. Congrats !".format(score))
-=======
-            await ctx.send("It only took you {} tries to guess the number ! Congrats".format(score))
->>>>>>> fe1028d213229281fff50d9b9d8a308930250f54
             continuer = False
         elif answer < randomnumber:
             score += 1
@@ -173,10 +144,6 @@ async def numberguessing(ctx,limit:int):
         elif answer > randomnumber:
             score += 1
             await ctx.send("The number I have in mind is smaller !")
-<<<<<<< HEAD
 
 
-=======
-            
->>>>>>> fe1028d213229281fff50d9b9d8a308930250f54
 bot.run(TOKEN)
