@@ -99,28 +99,28 @@ async def unban(ctx,person=None):
         await ctx.send("Uh oh. Looks like no one is currently banned on this server ! Keep it up.")
         return
     count = 0
+    dictionary = dict()
     string = ""
     for entry in bans:
         if "{0.name}#{0.discriminator}".format(entry.user) == person:
-            count += 1
             user = await bot.fetch_user(entry.user.id)
             await ctx.send("{} is now free to join us again !".format(user.name))
             await ctx.guild.unban(user)
             break
         elif entry.user.name == person:
                 count += 1
-                string += "{0.name}#{0.discriminator}\n".format(entry.user)
+                key = "{0.name}#{0.discriminator}".format(entry.user)
+                dictionary[key] = entry.user.id
+                string += "{}\n".format(key)
     if count >= 1:
         await ctx.send("Watch out ! There are {} guys named '{}' who are banned. Take a look at who you want to unban :\n{}".format(count,person,string))   
         def check(m):
             return m.author == ctx.author 
         ans = await bot.wait_for('message',check=check, timeout= 10)
         lines = string.split("\n")
-        temp = lines[int("{0.content}".format(ans)) - 1]
-        for entry in bans:
-            if "{0.name}#{0.discriminator}".format(entry.user) == temp:
-                user = await bot.fetch_user(entry.user.id)
-                await ctx.guild.unban(user)
+        identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
+        user = await bot.fetch_user(identifier)
+        await ctx.guild.unban(user)
     else:
         await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
 
