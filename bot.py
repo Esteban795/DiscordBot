@@ -122,5 +122,27 @@ async def unban(ctx,person=None):
         await ctx.guild.unban(user)
     else:
         await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
-    
+
+@bot.command()
+async def numberguessing(ctx,limit:int):
+    await ctx.send("Let's go ! You will have 10 seconds to answer each time !")
+    continuer = True
+    score = 0
+    randomnumber = randint(1,limit)
+    while continuer:
+        def check(m):
+            return m.author == ctx.author
+        response = await bot.wait_for('message',check=check,timeout=10)   
+        answer = int("{0.content}".format(response))
+        if answer == randomnumber:
+            score += 1
+            await ctx.send("It only took you {} tries to guess the number ! Congrats".format(score))
+            continuer = False
+        elif answer < randomnumber:
+            score += 1
+            await ctx.send("The number I have in mind is bigger !")
+        elif answer > randomnumber:
+            score += 1
+            await ctx.send("The number I have in mind is smaller !")
+            
 bot.run(TOKEN)
