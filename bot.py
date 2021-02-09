@@ -4,6 +4,7 @@ import discord
 import os
 from discord.ext import commands
 import requests
+from random import randint
 
 load_dotenv()
 bot = commands.Bot(command_prefix='$')
@@ -14,9 +15,10 @@ async def on_ready():
     print(f'Logged as {bot.user.name}')
 
 @bot.event
-async def on_command_error(ctx,err:discord.errors):
-    pass
+async def on_member_join(member:discord.Member):
+    await member.send('Private message')
 
+    
 @bot.event
 async def on_message(message): # logs file
     if message.author != bot.user:
@@ -100,27 +102,53 @@ async def unban(ctx,person=None):
     count = 0
     dictionary = dict()
     string = ""
+    continuer = True
     for entry in bans:
         if "{0.name}#{0.discriminator}".format(entry.user) == person:
             user = await bot.fetch_user(entry.user.id)
-            await ctx.send("{} is now free to join us again !".format(user.name))
+            await ctx.send("{0.name}#{0.discriminator} is now free to join us again !".format(entry.user))
             await ctx.guild.unban(user)
+            continuer = False
             break
         elif entry.user.name == person:
                 count += 1
                 key = "{0.name}#{0.discriminator}".format(entry.user)
                 dictionary[key] = entry.user.id
                 string += "{}\n".format(key)
-    if count >= 1:
-        await ctx.send("Watch out ! There are {} guys named '{}' who are banned. Take a look at who you want to unban :\n{}".format(count,person,string))   
+    if continuer:
+        if count >= 1:
+            await ctx.send("Watch out ! There are {} guys named '{}' who are banned. Take a look at who you want to unban :\n{}".format(count,person,string))   
+            def check(m):
+                return m.author == ctx.author 
+            ans = await bot.wait_for('message',check=check, timeout= 10)
+            lines = string.split("\n")
+            identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
+            user = await bot.fetch_user(identifier)
+            await ctx.guild.unban(user)
+        else:
+            await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
+
+@bot.command()
+async def numberguessing(ctx,limit:int):
+    await ctx.send("Let's go ! You will have 10 seconds to answer each time !")
+    continuer = True
+    score = 0
+    randomnumber = randint(1,limit)
+    while continuer:
         def check(m):
-            return m.author == ctx.author 
-        ans = await bot.wait_for('message',check=check, timeout= 10)
-        lines = string.split("\n")
-        identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
-        user = await bot.fetch_user(identifier)
-        await ctx.guild.unban(user)
-    else:
-        await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
-    
+            return m.author == ctx.author
+        response = await bot.wait_for('message',check=check,timeout=10)   
+        answer = int("{0.content}".format(response))
+        if answer == randomnumber:
+            score += 1
+            await ctx.send("It only took you {} tries to guess the number. Congrats !".format(score))
+            continuer = False
+        elif answer < randomnumber:
+            score += 1
+            await ctx.send("The number I have in mind is bigger !")
+        elif answer > randomnumber:
+            score += 1
+            await ctx.send("The number I have in mind is smaller !")
+
+
 bot.run(TOKEN)
