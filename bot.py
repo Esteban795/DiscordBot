@@ -17,9 +17,8 @@ async def on_ready():
 async def on_command_error(ctx,err:discord.errors):
     pass
 
-
 @bot.event
-async def on_message(message): # Writes any message send by users who are not this discord bot
+async def on_message(message): # logs file
     if message.author != bot.user:
         with open("logs.txt","a") as logs_file:
             time = datetime.now()
@@ -33,7 +32,7 @@ async def echo(ctx, *args): #Repeat whatever you say
     await ctx.send(" ".join(args))
 
 @bot.command()
-async def chucknorris(ctx,*args):
+async def chucknorris(ctx,*args):#chuck norris joke will be send to the channel
     if len(args) == 0:
         r = requests.get("http://api.icndb.com/jokes/random")
         if r.json()['type'] == 'success': # checks if the request was a success
@@ -43,24 +42,24 @@ async def chucknorris(ctx,*args):
 
 @bot.command()
 @commands.has_permissions(manage_roles = True)
-async def giverole(ctx, user: discord.Member, role: discord.Role): # Gives "role" to "user"
+async def giverole(ctx, user: discord.Member, role: discord.Role): # $giverole [member] [role]
     await user.add_roles(role)
 
 @bot.command()
 @commands.has_permissions(manage_roles = True)
-async def removerole(ctx,user : discord.Member, role:discord.Role): #Removes "role" from "user"
+async def removerole(ctx,user : discord.Member, role:discord.Role): # $removerole [member] [role]
     await user.remove_roles(role)
 
 @bot.command()
 @commands.has_permissions(kick_members = True)
-async def kick(ctx, user: discord.Member, *string): #Kicks "user", and send them a DM with "discord guild they were kicked, by who and for what reason"
+async def kick(ctx, user: discord.Member, *string): # $kick [member] [reason]
     reasons = " ".join(string)
     await user.send(f"You were kicked from {ctx.guild} by {ctx.author}. Reason : {reasons}")
     await user.kick(reason=reasons)
 
 @bot.command()
-@commands.has_permissions(manage_messages = True)
-async def purge(ctx,Amount:int):
+@commands.has_permissions(manage_messages = True) 
+async def purge(ctx,Amount:int): #Delete "Amount" messages from the current channel. $purge [int]
     await ctx.channel.purge(limit=Amount + 2)
 
 @bot.command()
@@ -75,7 +74,7 @@ async def banlist(ctx): #Displays current banlist from the server
 
 @bot.command()
 @commands.has_permissions(ban_members = True)
-async def ban(ctx,user : discord.Member, *string): #Same as kick, but with ban
+async def ban(ctx,user : discord.Member, *string): # $ban [user] [reason]
     reasons = " ".join(string)
     await user.send(f"You were banned from {ctx.guild} by {ctx.author}. Reason : {reasons}")
     await user.ban(reason=reasons)
@@ -123,15 +122,5 @@ async def unban(ctx,person=None):
         await ctx.guild.unban(user)
     else:
         await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
-
-
-@bot.command()
-async def test(ctx,*args):
-    msg = " ".join(args)
-    await ctx.send("You sure about saying {} ?".format(msg))
-    def check(m):
-        return m.author == ctx.author 
-    ans = await bot.wait_for('message',check=check, timeout= 10)
-    await ctx.send("And then {0.content}".format(ans))
     
 bot.run(TOKEN)
