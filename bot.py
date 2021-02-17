@@ -50,14 +50,15 @@ async def removerole(ctx,user : discord.Member, role:discord.Role): # $removerol
 @bot.command()
 @commands.has_permissions(kick_members = True)
 async def kick(ctx, user: discord.Member, *string): # $kick [member] [reason]
-    reasons = " ".join(string)
+    print(string)
+    reasons = " ".join(string) if string != () else "Not specified"
     await user.send(f"You were kicked from {ctx.guild} by {ctx.author}. Reason : {reasons}")
     await user.kick(reason=reasons)
 
 @bot.command()
 @commands.has_permissions(manage_messages = True) 
-async def purge(ctx,Amount:int): #Delete "Amount" messages from the current channel. $purge [int]
-    await ctx.channel.purge(limit=Amount + 2)
+async def purge(ctx,Amount=2): #Delete "Amount" messages from the current channel. $purge [int]
+    await ctx.channel.purge(limit=Amount + 1)
 
 @bot.command()
 @commands.has_permissions(administrator = True)
@@ -132,7 +133,7 @@ async def numberguessing(ctx,limit:int):
     while continuer:
         def check(m):
             return m.author == ctx.author
-        response = await bot.wait_for('message',check=check,timeout=10)   
+        response = await bot.wait_for('message',check=check,timeout=600)   
         answer = int("{0.content}".format(response))
         if answer == randomnumber:
             score += 1
