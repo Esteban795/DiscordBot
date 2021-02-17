@@ -86,6 +86,10 @@ Example :
 
 The guild member with name "ThatOneGuy" will be granted the "demi-god" role if it exists ! (Working on error handling if the role doesn't exist. I'm looking for a way to auto-create the role if there isn't one.)
 
+
+
+
+
 - $removerole : will remove the specified role from the tagged member.
 
 Example : 
@@ -151,4 +155,4 @@ Ban list:
 Uh oh. Looks like no one is currently banned on this server ! Keep it up.
 ```
 
-**This command requires that you have the "Administrator" permission ! **
+**This command requires that you have the "Administrator" permission !**
