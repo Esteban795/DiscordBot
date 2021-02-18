@@ -170,8 +170,44 @@ Uh oh. Looks like no one is currently banned on this server ! Keep it up.
 Example : 
 > $perms @ThatOneGuy 
 
+- in DM :
 ```txt
 Administrator : False
 Manage messages : True
 ...
 ```
+
+**This command requires that you have the "Administrator" permission!**
+
+*********
+
+- $unban : this command allows you to unban a user from your guild.
+
+I will need to develop that command since it's a bit complex.
+
+```txt
+$unban
+```
+You always need to specify the name of the person you would like to unban. Not giving the bot a name will only return :
+
+```txt
+You need to tell me who I need to unban !
+```
+
+##### Then there are 2 cases :
+
+- First, the current guild has no banned members. Then the bot will just say that no one is currently banned, and so there is no one to unban.
+
+```txt
+$unban ThatOneGuy#5555
+```
+
+```txt
+Uh oh. Looks like no one is currently banned on this server ! Keep it up.
+```
+
+
+
+##### Second case, the guild does have banned members. Then there are 2 mores cases !
+
+- 
