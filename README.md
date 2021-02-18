@@ -71,8 +71,8 @@ That's all for now, I'm working on implementing a way for anyone to add customiz
 
 Example : 
 
-- > $echo Hi, I'm ChuckNorris
-- > ChuckNorrisBot : Hi, I'm ChuckNorris
+> $echo Hi, I'm ChuckNorris
+> ChuckNorrisBot : Hi, I'm ChuckNorris
 
 **This command requires no permissions.**
 
@@ -82,7 +82,7 @@ Example :
 
 Example : 
 
-- > $giverole @ThatOneGuy demi-god
+> $giverole @ThatOneGuy demi-god
 
 The guild member with name "ThatOneGuy" will be granted the "demi-god" role if it exists ! (Working on error handling if the role doesn't exist. I'm looking for a way to auto-create the role if there isn't one.)
 
@@ -94,7 +94,7 @@ The guild member with name "ThatOneGuy" will be granted the "demi-god" role if i
 
 Example : 
 
-- > $removerole @ThatOneGuyAgain demi-god
+> $removerole @ThatOneGuyAgain demi-god
 
 The guild member "ThatOneGuyAgain" will see this awesome role taken from him (if he currently has it of course).
 
@@ -107,12 +107,12 @@ The guild member "ThatOneGuyAgain" will see this awesome role taken from him (if
 
 Example : 
 
-- > $kick @ThatOneGuyAgainAndAgain trolling
+> $kick @ThatOneGuyAgainAndAgain trolling
 
 - @ThatOneGuyAgainAndAgain gets kicked out of the guild.
 
-- > @ThatOneGuyAgainAndAgain gets a DM.
-- > You were kicked from TheBestGuildEver by TheBestModerator for : trolling.
+> @ThatOneGuyAgainAndAgain gets a DM.
+> You were kicked from TheBestGuildEver by TheBestModerator for : trolling.
 
 
 **This command requires that you have the "Kick Members" permission !**
@@ -124,7 +124,7 @@ Example :
 
 Example : 
 
-- > $purge 1000
+> $purge 1000
 
 This will delete the last 1000 messages from the chat (if there are 1000 or more. If there are only 500 messages, the bot won't obviously delete more than 500 messages.)
 
@@ -139,7 +139,7 @@ Examples :
 
 - ThatOneGuy#5555 is banned.
 
-- > $banlist
+> $banlist
 
 ```txt
 Ban list: 
@@ -149,7 +149,7 @@ Ban list:
 
 - No one is banned.
 
-- > $banlist
+> $banlist
 
 ```txt
 Uh oh. Looks like no one is currently banned on this server ! Keep it up.
