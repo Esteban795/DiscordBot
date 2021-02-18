@@ -56,6 +56,7 @@ way to go through the logs depending on the name of the author, and it will came
 ```py
 ["hello",'hi','greetings','greet','hi there']
 ```
+***This is not case sensitive***
 
 - He will answer : 
 
@@ -71,12 +72,12 @@ That's all for now, I'm working on implementing a way for anyone to add customiz
 
 Example : 
 
-```txt
-$echo Hi, I'm ChuckNorris
-```
+
+> $echo Hi, I'm ChuckNorris
+
 
 ```txt
-ChuckNorrisBot : Hi, I'm ChuckNorris
+Bot : Hi, I'm ChuckNorris
 ```
 
 **This command requires no permissions.**
@@ -210,4 +211,49 @@ Uh oh. Looks like no one is currently banned on this server ! Keep it up.
 
 ##### Second case, the guild does have banned members. Then there are 2 mores cases !
 
-- 
+> First case : you have the name and discriminator of the person > you want to unban.
+>
+> $unban ThatOneGuy#5555
+
+```txt
+Bot : ThatOneGuy#5555 is now free to join us !
+```
+
+> Second case : you just want give the bot the name.
+>
+> $unban ThatOneGuy
+
+- If it exists more than one banned user with the name "ThatOneGuy" in the banlist, it will automatically unban it.
+Else, the bot will show you something like :
+
+```txt
+Watch out ! There are [number of guys with that name] guys named [name] who are banned. Take a look at who you want to unban :
+- ThatOneGuy#5555
+- ThatOneGuy#6666
+```
+
+- Then, just indicates an integer which will correspond to the position of the guy in the list.
+
+> $unban ThatOneGuy
+>
+```txt
+Watch out ! There are 2 guys named 'ThatOneGuy' who are banned. Take a look at who you want to unban : 
+- ThatOneGuy#5555
+- ThatOneGuy#6666
+```
+- Let's say that you want to unban ThatOneGuy#6666.
+
+> 2
+>
+
+```txt
+ThatOneGuy#6666 is now free to join us again !
+```
+
+**********************
+
+- $numberguessing : just a basic game. You need to find the number the bot has in mind. You have 10 seconds between each choice.
+
+> $numberguessing 1000
+>
+********
