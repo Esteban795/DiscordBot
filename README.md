@@ -71,8 +71,13 @@ That's all for now, I'm working on implementing a way for anyone to add customiz
 
 Example : 
 
-> $echo Hi, I'm ChuckNorris
-> ChuckNorrisBot : Hi, I'm ChuckNorris
+```txt
+$echo Hi, I'm ChuckNorris
+```
+
+```txt
+ChuckNorrisBot : Hi, I'm ChuckNorris
+```
 
 **This command requires no permissions.**
 
@@ -156,3 +161,17 @@ Uh oh. Looks like no one is currently banned on this server ! Keep it up.
 ```
 
 **This command requires that you have the "Administrator" permission !**
+
+
+**************************
+
+- $perms : will send you in DM the permissions that the tagged user have.
+
+Example : 
+> $perms @ThatOneGuy 
+
+```txt
+Administrator : False
+Manage messages : True
+...
+```
