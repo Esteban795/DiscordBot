@@ -4,6 +4,7 @@ import discord
 import os
 from discord.ext import commands
 import requests
+from random import randint
 
 load_dotenv()
 bot = commands.Bot(command_prefix='$')
@@ -14,10 +15,6 @@ async def on_ready():
     print(f'Logged as {bot.user.name}')
 
 @bot.event
-async def on_command_error(ctx,err:discord.errors):
-    pass
-
-@bot.event
 async def on_message(message): # logs file
     if message.author != bot.user:
         with open("logs.txt","a") as logs_file:
@@ -25,6 +22,13 @@ async def on_message(message): # logs file
             logs_file.write(f"{time} ||||| Message from {message.author} : {message.content} \n")
     if message.content.lower() in ["hello",'hi','greetings','greet','hi there']:
         await message.channel.send("Hey {} !".format(message.author.display_name))
+    if message.content.startswith('!hello'):
+        embedVar = discord.Embed(title="Title", description="Desc", color=0xff0000)
+        embedVar.add_field(name="Field1", value="hi", inline=False)
+        embedVar.add_field(name="Field2", value="hi2", inline=False)
+        embedVar.set_footer(text="footer") #if you like to
+        embedVar.set_author(name="ESTEBAN",url="https://mhworld.kiranico.com/fr/items?type=1")
+        await message.channel.send(embed=embedVar)
     await bot.process_commands(message)
 
 @bot.command()
@@ -36,7 +40,11 @@ async def chucknorris(ctx,*args):#chuck norris joke will be send to the channel
     if len(args) == 0:
         r = requests.get("http://api.icndb.com/jokes/random")
         if r.json()['type'] == 'success': # checks if the request was a success
-            await ctx.send(r.json()['value']['joke'])
+            joke = r.json()['value']['joke']
+            joke_id = r.json()["value"]["id"]
+            embedVar = discord.Embed(title=f"Joke n° {joke_id}.",color=0xff12ff)
+            embedVar.add_field(name="This joke is provided to you by : me.",value=f"{joke}")
+            await ctx.send(embed=embedVar)
         else:
             await ctx.send("Something went wrong. Investigating on it !")
 
@@ -100,28 +108,31 @@ async def unban(ctx,person=None):
     count = 0
     dictionary = dict()
     string = ""
+    continuer = True
     for entry in bans:
         if "{0.name}#{0.discriminator}".format(entry.user) == person:
             user = await bot.fetch_user(entry.user.id)
-            await ctx.send("{} is now free to join us again !".format(user.name))
+            await ctx.send("{0.name}#{0.discriminator} is now free to join us again !".format(entry.user))
             await ctx.guild.unban(user)
+            continuer = False
             break
         elif entry.user.name == person:
                 count += 1
                 key = "{0.name}#{0.discriminator}".format(entry.user)
                 dictionary[key] = entry.user.id
                 string += "{}\n".format(key)
-    if count >= 1:
-        await ctx.send("Watch out ! There are {} guys named '{}' who are banned. Take a look at who you want to unban :\n{}".format(count,person,string))   
-        def check(m):
-            return m.author == ctx.author 
-        ans = await bot.wait_for('message',check=check, timeout= 10)
-        lines = string.split("\n")
-        identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
-        user = await bot.fetch_user(identifier)
-        await ctx.guild.unban(user)
-    else:
-        await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
+    if continuer:
+        if count >= 1:
+            await ctx.send("Watch out ! There are {} guys named '{}' who are banned. Take a look at who you want to unban :\n{}".format(count,person,string))   
+            def check(m):
+                return m.author == ctx.author 
+            ans = await bot.wait_for('message',check=check, timeout= 10)
+            lines = string.split("\n")
+            identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
+            user = await bot.fetch_user(identifier)
+            await ctx.guild.unban(user)
+        else:
+            await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
 
 @bot.command()
 async def numberguessing(ctx,limit:int):
@@ -136,7 +147,7 @@ async def numberguessing(ctx,limit:int):
         answer = int("{0.content}".format(response))
         if answer == randomnumber:
             score += 1
-            await ctx.send("It only took you {} tries to guess the number ! Congrats".format(score))
+            await ctx.send("It only took you {} tries to guess the number. Congrats !".format(score))
             continuer = False
         elif answer < randomnumber:
             score += 1
@@ -144,5 +155,5 @@ async def numberguessing(ctx,limit:int):
         elif answer > randomnumber:
             score += 1
             await ctx.send("The number I have in mind is smaller !")
-            
+
 bot.run(TOKEN)
