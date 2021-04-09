@@ -24,10 +24,12 @@ async def on_message(message): # logs file
         await message.channel.send("Hey {} !".format(message.author.display_name))
     if message.content.startswith('!hello'):
         embedVar = discord.Embed(title="Title", description="Desc", color=0xff0000)
-        embedVar.add_field(name="Field1", value="hi", inline=False)
+        embedVar.add_field(name="Field1", value="hi",inline=False)
         embedVar.add_field(name="Field2", value="hi2", inline=False)
         embedVar.set_footer(text="footer") #if you like to
         embedVar.set_author(name="ESTEBAN",url="https://mhworld.kiranico.com/fr/items?type=1")
+        embedVar.set_image(url="https://cdn.discordapp.com/attachments/517055031820812288/776081552118382592/20201109205815_1.jpg")
+        embedVar.set_thumbnail(url="https://cdn.discordapp.com/attachments/517055031820812288/776081552118382592/20201109205815_1.jpg")
         await message.channel.send(embed=embedVar)
     await bot.process_commands(message)
 
@@ -42,27 +44,34 @@ async def chucknorris(ctx,*args):#chuck norris joke will be send to the channel
         if r.json()['type'] == 'success': # checks if the request was a success
             joke = r.json()['value']['joke']
             joke_id = r.json()["value"]["id"]
-            embedVar = discord.Embed(title=f"Joke n° {joke_id}.",color=0xff12ff)
+            embedVar = discord.Embed(title=f"Joke n° {joke_id}.",color=0xaaffaa)
             embedVar.add_field(name="This joke is provided to you by : me.",value=f"{joke}")
             await ctx.send(embed=embedVar)
         else:
-            await ctx.send("Something went wrong. Investigating on it !")
+            embedVar = discord.Embed(title="I'm struggling.",color=0xff0000)
+            embedVar.add_field(name="I couldn't get a joke. Is Chuck Norris DDoSing me ?",value="I'm investigating on it !")
+            await ctx.send(embed=embedVar)
 
 @bot.command()
 @commands.has_permissions(manage_roles = True)
 async def giverole(ctx, user: discord.Member, role: discord.Role): # $giverole [member] [role]
     await user.add_roles(role)
+    await ctx.send(f'{user} now has the {role} role !')
 
 @bot.command()
 @commands.has_permissions(manage_roles = True)
 async def removerole(ctx,user : discord.Member, role:discord.Role): # $removerole [member] [role]
     await user.remove_roles(role)
+    await ctx.send(f'{user} just lost the {role} role !')
 
 @bot.command()
 @commands.has_permissions(kick_members = True)
 async def kick(ctx, user: discord.Member, *string): # $kick [member] [reason]
     reasons = " ".join(string)
-    await user.send(f"You were kicked from {ctx.guild} by {ctx.author}. Reason : {reasons}")
+    embedVar = discord.Embed(title="Uh oh. Looks like you did something quite bad !",color=0xff0000)
+    embedVar.add_field(name=f"You were kicked from {ctx.guild} by {ctx.author}.",value=f"Reason : {reasons}")
+    await ctx.send(f"{user} was kicked from the server !")
+    await user.send(embed=embedVar)
     await user.kick(reason=reasons)
 
 @bot.command()
@@ -75,16 +84,21 @@ async def purge(ctx,Amount:int): #Delete "Amount" messages from the current chan
 async def banlist(ctx): #Displays current banlist from the server
     bans = await ctx.guild.bans()
     if len(bans) == 0:
-        await ctx.send("Uh oh. Looks like no one is currently banned on this server ! Keep it up.")
+        embedVar = discord.Embed(title="Uh oh. Looks like no one is banned on this server. Those are good news !",color=0xaaffaa)
+        await ctx.send(embed=embedVar)
     else:
+        embedVar = discord.Embed(title="Here are all the people banned on this server : ",color=0xaaffaa)
         pretty_list = ["• {}#{} for : {} ".format(entry.user.name,entry.user.discriminator,entry[0]) for entry in bans]
-        await ctx.send("**Ban list:** \n{}".format("\n".join(pretty_list)))
+        embedVar.add_field(name=f"There are {len(pretty_list)} of them ! ",value="\n".join(pretty_list))
+        await ctx.send(embed=embedVar)
 
 @bot.command()
 @commands.has_permissions(ban_members = True)
 async def ban(ctx,user : discord.Member, *string): # $ban [user] [reason]
-    reasons = " ".join(string)
-    await user.send(f"You were banned from {ctx.guild} by {ctx.author}. Reason : {reasons}")
+    reasons = " ".join(string) if len(string) > 0 else "Not specified."
+    embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
+    embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reasons}")
+    await user.send(embed=embedVar)
     await user.ban(reason=reasons)
 
 @bot.command()
@@ -98,13 +112,19 @@ async def perms(ctx,member:discord.Member):
 @bot.command()
 @commands.has_permissions(ban_members = True)
 async def unban(ctx,person=None):
+    bans = await ctx.guild.bans()
     if person is None:
         await ctx.send("You need to tell me who I need to unban !")
         return
-    bans = await ctx.guild.bans()
-    if len(bans) == 0:
-        await ctx.send("Uh oh. Looks like no one is currently banned on this server ! Keep it up.")
+    elif len(bans) == 0:
+        embedVar = discord.Embed(title="Uh oh. Looks like no one is banned on this server. Those are good news !",color=0xaaffaa)
+        await ctx.send(embed=embedVar)
         return
+    elif person == "all":
+        for entry in bans:
+            user = await bot.fetch_user(entry.user.id)
+            await ctx.guild.unban(user)
+            return
     count = 0
     dictionary = dict()
     string = ""
@@ -156,4 +176,8 @@ async def numberguessing(ctx,limit:int):
             score += 1
             await ctx.send("The number I have in mind is smaller !")
 
+@bot.command()
+async def clearlogs(ctx):
+    with open("logs.txt","w"):
+        await ctx.send("I just cleared the log file !")
 bot.run(TOKEN)
