@@ -22,15 +22,6 @@ async def on_message(message): # logs file
             logs_file.write(f"{time} ||||| Message from {message.author} : {message.content} \n")
     if message.content.lower() in ["hello",'hi','greetings','greet','hi there']:
         await message.channel.send("Hey {} !".format(message.author.display_name))
-    if message.content.startswith('!hello'):
-        embedVar = discord.Embed(title="Title", description="Desc", color=0xff0000)
-        embedVar.add_field(name="Field1", value="hi",inline=False)
-        embedVar.add_field(name="Field2", value="hi2", inline=False)
-        embedVar.set_footer(text="footer") #if you like to
-        embedVar.set_author(name="ESTEBAN",url="https://mhworld.kiranico.com/fr/items?type=1")
-        embedVar.set_image(url="https://cdn.discordapp.com/attachments/517055031820812288/776081552118382592/20201109205815_1.jpg")
-        embedVar.set_thumbnail(url="https://cdn.discordapp.com/attachments/517055031820812288/776081552118382592/20201109205815_1.jpg")
-        await message.channel.send(embed=embedVar)
     await bot.process_commands(message)
 
 @bot.command()
@@ -38,31 +29,47 @@ async def echo(ctx, *args): #Repeat whatever you say
     await ctx.send(" ".join(args))
 
 @bot.command()
+async def ck(ctx,*args):
+    await chucknorris(ctx," ".join(args))
+
+@bot.command()
 async def chucknorris(ctx,*args):#chuck norris joke will be send to the channel
-    if len(args) == 0:
-        r = requests.get("http://api.icndb.com/jokes/random")
-        if r.json()['type'] == 'success': # checks if the request was a success
-            joke = r.json()['value']['joke']
-            joke_id = r.json()["value"]["id"]
-            embedVar = discord.Embed(title=f"Joke n° {joke_id}.",color=0xaaffaa)
-            embedVar.add_field(name="This joke is provided to you by : me.",value=f"{joke}")
-            await ctx.send(embed=embedVar)
+    l = len(args[0])
+    try:
+        if l > 0:
+            r = requests.get(f"https://api.chucknorris.io/jokes/random?category={args[0].lower()}")
         else:
-            embedVar = discord.Embed(title="I'm struggling.",color=0xff0000)
-            embedVar.add_field(name="I couldn't get a joke. Is Chuck Norris DDoSing me ?",value="I'm investigating on it !")
-            await ctx.send(embed=embedVar)
+            r = requests.get("https://api.chucknorris.io/jokes/random")
+        joke = r.json()["value"]
+        categories = ",".join(r.json()["categories"]) if len(r.json()["categories"]) > 0 else "None"
+        embedVar = discord.Embed(title=f"Categories : {categories}.",color=0xaaffaa)
+        embedVar.add_field(name="This joke is provided to you by : Chuck Norris himself.",value=f"{joke}")
+        await ctx.send(embed=embedVar)
+    except KeyError:
+        embedVar = discord.Embed(title=f'There are no such categories as "{args[0]}".',color=0xff0000)
+        embedVar.add_field(name="Don't try to fool me, I'll know it.",value="I'm also telling Chuck Norris about this. Watch your back.")
+        embedVar.set_image(url="https://voi.img.pmdstatic.net/fit/http.3A.2F.2Fprd2-bone-image.2Es3-website-eu-west-1.2Eamazonaws.2Ecom.2Fvoi.2Fvar.2Fvoi.2Fstorage.2Fimages.2Fmedia.2Fmultiupload-du-25-juillet-2013.2Fchuck-norris-pl.2F8633422-1-fre-FR.2Fchuck-norris-pl.2Ejpg/460x258/quality/80/chuck-norris-vend-la-maison-qui-a-servi-de-decor-a-walker-texas-ranger.jpg")
+        embedVar.set_footer(text="Pshhh. If you have no clue what categories are available, type '$ckcategories' !")
+        await ctx.send(embed=embedVar)
+
+@bot.command()
+async def ckcategories(ctx):
+    embedVar = discord.Embed(title="The categories of joke the bot can tell you.",color=0xaaffaa)
+    r = requests.get("https://api.chucknorris.io/jokes/categories")
+    embedVar.add_field(name="Pick your favourite ! ",value="\n".join(["• {}".format(i) for i in r.json()]))
+    await ctx.send(embed=embedVar)
 
 @bot.command()
 @commands.has_permissions(manage_roles = True)
 async def giverole(ctx, user: discord.Member, role: discord.Role): # $giverole [member] [role]
     await user.add_roles(role)
-    await ctx.send(f'{user} now has the {role} role !')
+    await ctx.send(f'**{user}** now has the {role} role !')
 
 @bot.command()
 @commands.has_permissions(manage_roles = True)
 async def removerole(ctx,user : discord.Member, role:discord.Role): # $removerole [member] [role]
     await user.remove_roles(role)
-    await ctx.send(f'{user} just lost the {role} role !')
+    await ctx.send(f'**{user}** just lost the {role} role !')
 
 @bot.command()
 @commands.has_permissions(kick_members = True)
@@ -70,14 +77,14 @@ async def kick(ctx, user: discord.Member, *string): # $kick [member] [reason]
     reasons = " ".join(string)
     embedVar = discord.Embed(title="Uh oh. Looks like you did something quite bad !",color=0xff0000)
     embedVar.add_field(name=f"You were kicked from {ctx.guild} by {ctx.author}.",value=f"Reason : {reasons}")
-    await ctx.send(f"{user} was kicked from the server !")
+    await ctx.send(f"**{user}** was kicked from the server !")
     await user.send(embed=embedVar)
     await user.kick(reason=reasons)
 
 @bot.command()
 @commands.has_permissions(manage_messages = True) 
 async def purge(ctx,Amount:int): #Delete "Amount" messages from the current channel. $purge [int]
-    await ctx.channel.purge(limit=Amount + 2)
+    await ctx.channel.purge(limit=Amount + 1)
 
 @bot.command()
 @commands.has_permissions(administrator = True)
@@ -104,10 +111,18 @@ async def ban(ctx,user : discord.Member, *string): # $ban [user] [reason]
 @bot.command()
 @commands.has_permissions(administrator = True)
 async def perms(ctx,member:discord.Member):
-    perms = ""
-    for i in member.guild_permissions:
-        perms += "{} : {} \n".format(i[0],i[1])
-    await ctx.author.send(perms)
+    embedVar = discord.Embed(title=f"You asked for {member}'s permissions on {ctx.guild}.",color=0xaaaaff)
+    embedVar.add_field(name="Here they are : ",value="\n".join(["• {} : {}".format(i[0],i[1]) for i in member.guild_permissions]))
+    await ctx.author.send(embed=embedVar)
+
+@perms.error
+async def perms_error(ctx,error):
+    if isinstance(error, commands.MissingPermissions):
+        embedVar = discord.Embed(title="Uh oh. Looks like someone is trying to do something without having the permission to do so.",color=0xff0000)
+        embedVar.add_field(name=f"{ctx.author}, you don't have access to this command.",value="You require {} perms to do so !")
+        await ctx.send(embed=embedVar)
+
+
 
 @bot.command()
 @commands.has_permissions(ban_members = True)
