@@ -22,6 +22,13 @@ async def on_message(message): # logs file
             logs_file.write(f"{time} ||||| Message from {message.author} : {message.content} \n")
     if message.content.lower() in ["hello",'hi','greetings','greet','hi there']:
         await message.channel.send("Hey {} !".format(message.author.display_name))
+    if message.content.startswith('!hello'):
+        embedVar = discord.Embed(title="Title", description="Desc", color=0xff0000)
+        embedVar.add_field(name="Field1", value="hi", inline=False)
+        embedVar.add_field(name="Field2", value="hi2", inline=False)
+        embedVar.set_footer(text="footer") #if you like to
+        embedVar.set_author(name="ESTEBAN",url="https://mhworld.kiranico.com/fr/items?type=1")
+        await message.channel.send(embed=embedVar)
     await bot.process_commands(message)
 
 @bot.command()
@@ -33,7 +40,11 @@ async def chucknorris(ctx,*args):#chuck norris joke will be send to the channel
     if len(args) == 0:
         r = requests.get("http://api.icndb.com/jokes/random")
         if r.json()['type'] == 'success': # checks if the request was a success
-            await ctx.send(r.json()['value']['joke'])
+            joke = r.json()['value']['joke']
+            joke_id = r.json()["value"]["id"]
+            embedVar = discord.Embed(title=f"Joke n° {joke_id}.",color=0xff12ff)
+            embedVar.add_field(name="This joke is provided to you by : me.",value=f"{joke}")
+            await ctx.send(embed=embedVar)
         else:
             await ctx.send("Something went wrong. Investigating on it !")
 
@@ -50,15 +61,14 @@ async def removerole(ctx,user : discord.Member, role:discord.Role): # $removerol
 @bot.command()
 @commands.has_permissions(kick_members = True)
 async def kick(ctx, user: discord.Member, *string): # $kick [member] [reason]
-    print(string)
-    reasons = " ".join(string) if string != () else "Not specified"
+    reasons = " ".join(string)
     await user.send(f"You were kicked from {ctx.guild} by {ctx.author}. Reason : {reasons}")
     await user.kick(reason=reasons)
 
 @bot.command()
 @commands.has_permissions(manage_messages = True) 
-async def purge(ctx,Amount=2): #Delete "Amount" messages from the current channel. $purge [int]
-    await ctx.channel.purge(limit=Amount + 1)
+async def purge(ctx,Amount:int): #Delete "Amount" messages from the current channel. $purge [int]
+    await ctx.channel.purge(limit=Amount + 2)
 
 @bot.command()
 @commands.has_permissions(administrator = True)
@@ -133,7 +143,7 @@ async def numberguessing(ctx,limit:int):
     while continuer:
         def check(m):
             return m.author == ctx.author
-        response = await bot.wait_for('message',check=check,timeout=600)   
+        response = await bot.wait_for('message',check=check,timeout=10)   
         answer = int("{0.content}".format(response))
         if answer == randomnumber:
             score += 1
@@ -145,6 +155,5 @@ async def numberguessing(ctx,limit:int):
         elif answer > randomnumber:
             score += 1
             await ctx.send("The number I have in mind is smaller !")
-
 
 bot.run(TOKEN)
