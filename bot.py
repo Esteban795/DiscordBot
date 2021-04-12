@@ -58,19 +58,16 @@ async def ckcategories(ctx):
     r = requests.get("https://api.chucknorris.io/jokes/categories")
     embedVar.add_field(name="Pick your favourite ! ",value="\n".join(["• {}".format(i) for i in r.json()]))
     await ctx.send(embed=embedVar)
-
 @bot.command()
 @commands.has_permissions(manage_roles = True)
 async def giverole(ctx, user: discord.Member, role: discord.Role): # $giverole [member] [role]
     await user.add_roles(role)
     await ctx.send(f'**{user}** now has the {role} role !')
-
 @bot.command()
 @commands.has_permissions(manage_roles = True)
 async def removerole(ctx,user : discord.Member, role:discord.Role): # $removerole [member] [role]
     await user.remove_roles(role)
     await ctx.send(f'**{user}** just lost the {role} role !')
-
 @bot.command()
 @commands.has_permissions(kick_members = True)
 async def kick(ctx, user: discord.Member, *string): # $kick [member] [reason]
@@ -85,7 +82,6 @@ async def kick(ctx, user: discord.Member, *string): # $kick [member] [reason]
 @commands.has_permissions(manage_messages = True) 
 async def purge(ctx,Amount:int): #Delete "Amount" messages from the current channel. $purge [int]
     await ctx.channel.purge(limit=Amount + 1)
-
 @bot.command()
 @commands.has_permissions(administrator = True)
 async def banlist(ctx): #Displays current banlist from the server
@@ -98,7 +94,6 @@ async def banlist(ctx): #Displays current banlist from the server
         pretty_list = ["• {}#{} for : {} ".format(entry.user.name,entry.user.discriminator,entry[0]) for entry in bans]
         embedVar.add_field(name=f"There are {len(pretty_list)} of them ! ",value="\n".join(pretty_list))
         await ctx.send(embed=embedVar)
-
 @bot.command()
 @commands.has_permissions(ban_members = True)
 async def ban(ctx,user : discord.Member, *string): # $ban [user] [reason]
@@ -107,7 +102,6 @@ async def ban(ctx,user : discord.Member, *string): # $ban [user] [reason]
     embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reasons}")
     await user.send(embed=embedVar)
     await user.ban(reason=reasons)
-
 @bot.command()
 @commands.has_permissions(administrator = True)
 async def perms(ctx,member:discord.Member):
@@ -115,23 +109,14 @@ async def perms(ctx,member:discord.Member):
     embedVar.add_field(name="Here they are : ",value="\n".join(["• {} : {}".format(i[0],i[1]) for i in member.guild_permissions]))
     await ctx.author.send(embed=embedVar)
 
-@perms.error
-async def perms_error(ctx,error):
-    if isinstance(error, commands.MissingPermissions):
-        embedVar = discord.Embed(title="Uh oh. Looks like someone is trying to do something without having the permission to do so.",color=0xff0000)
-        embedVar.add_field(name=f"{ctx.author}, you don't have access to this command.",value="You require {} perms to do so !")
-        await ctx.send(embed=embedVar)
 
 
 
 @bot.command()
 @commands.has_permissions(ban_members = True)
-async def unban(ctx,person=None):
+async def unban(ctx,person,*args):
     bans = await ctx.guild.bans()
-    if person is None:
-        await ctx.send("You need to tell me who I need to unban !")
-        return
-    elif len(bans) == 0:
+    if len(bans) == 0:
         embedVar = discord.Embed(title="Uh oh. Looks like no one is banned on this server. Those are good news !",color=0xaaffaa)
         await ctx.send(embed=embedVar)
         return
@@ -190,9 +175,34 @@ async def numberguessing(ctx,limit:int):
         elif answer > randomnumber:
             score += 1
             await ctx.send("The number I have in mind is smaller !")
-
 @bot.command()
 async def clearlogs(ctx):
     with open("logs.txt","w"):
         await ctx.send("I just cleared the log file !")
+
+#Error handling !
+
+async def error_displayer(ctx,error):
+    if isinstance(error,commands.MissingPermissions):
+        missing_perms = " or ".join([" ".join(i.split('_')) for i in error.missing_perms])
+        embedVar = discord.Embed(title="Uh oh. Something is not going as expected.",color=0xff0000)
+        embedVar.add_field(name=f"{ctx.author}, you don't have access to this command.",value=f"You require {missing_perms} permissions to do so !")
+        await ctx.send(embed=embedVar)
+    if isinstance(error,commands.MissingRequiredArgument):
+        print(error.param)
+@perms.error
+async def perms_error(ctx,error):
+    await error_displayer(ctx,error)
+@ban.error
+async def ban_error(ctx,error):
+    await error_displayer(ctx,error)
+@kick.error
+async def kick_error(ctx,error):
+    await error_displayer(ctx,error)
+@unban.error
+async def unban_error(ctx,error):
+    await error_displayer(ctx,error)
+@banlist.error
+async def banlist_error(ctx,error):
+    await error_displayer(ctx,error)
 bot.run(TOKEN)
