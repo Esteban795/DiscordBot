@@ -124,6 +124,8 @@ async def unban(ctx,person,*args):
         for entry in bans:
             user = await bot.fetch_user(entry.user.id)
             await ctx.guild.unban(user)
+            embedVar = discord.Embed(title="All members have been successfully unbanned !",color=0xaaffaa)
+            await ctx.send(embed=embedVar)
             return
     count = 0
     dictionary = dict()
@@ -132,7 +134,22 @@ async def unban(ctx,person,*args):
     for entry in bans:
         if "{0.name}#{0.discriminator}".format(entry.user) == person:
             user = await bot.fetch_user(entry.user.id)
-            await ctx.send("{0.name}#{0.discriminator} is now free to join us again !".format(entry.user))
+            print(f'User : {user}')
+            embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(entry.user),color=0xaaffaa)
+            embedVar.add_field(name="I can also send them a DM to tell them they were unbanned. Want me to do it ?",value="Type 'yes' if you want me to !")
+            embedVar.set_footer(text="They will know the reason they were unbanned but also who unbanned them (other than me, your fellow bot) !")
+            await ctx.send(embed=embedVar)
+            def check(m):
+                return m.author == ctx.author
+            ans = await bot.wait_for('message',check=check,timeout=10)
+            if ans.content.lower() == "yes":
+                print("deban")
+                """
+                unbanDM = discord.Embed(title=f"Hello !  You just got unbanned from : {ctx.guild}.",color=0xaaffaa)
+                unbanDM.add_field(name=f"{ans.author} decided to unban you. Why ? That's what they told me : {' '.join(args)}.",value="Please, make sure not to get banned again !")
+                await user.send(embed=unbanDM)"""
+                await ctx.send("deban")
+                await user.send("deban")
             await ctx.guild.unban(user)
             continuer = False
             break
