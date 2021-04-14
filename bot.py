@@ -5,7 +5,7 @@ import os
 from discord.ext import commands
 import requests
 from random import randint
-
+import json
 load_dotenv()
 bot = commands.Bot(command_prefix='$')
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
@@ -139,9 +139,9 @@ async def unban(ctx,person,*args):
             embedVar.add_field(name="I can also send them a DM to tell them they were unbanned. Want me to do it ?",value="Type 'yes' if you want me to !")
             embedVar.set_footer(text="They will know the reason they were unbanned but also who unbanned them (other than me, your fellow bot) !")
             await ctx.send(embed=embedVar)
-            def check(m):
+            def check1(m):
                 return m.author == ctx.author
-            ans = await bot.wait_for('message',check=check,timeout=10)
+            ans = await bot.wait_for('message',check=check1,timeout=10)
             if ans.content.lower() == "yes":
                 print("deban")
                 """
@@ -149,7 +149,6 @@ async def unban(ctx,person,*args):
                 unbanDM.add_field(name=f"{ans.author} decided to unban you. Why ? That's what they told me : {' '.join(args)}.",value="Please, make sure not to get banned again !")
                 await user.send(embed=unbanDM)"""
                 await ctx.send("deban")
-                await user.send("deban")
             await ctx.guild.unban(user)
             continuer = False
             break
@@ -222,4 +221,18 @@ async def unban_error(ctx,error):
 @banlist.error
 async def banlist_error(ctx,error):
     await error_displayer(ctx,error)
+
+@bot.command()
+async def owstats(ctx,platform,region,pseudo):
+    p = '-'.join(pseudo.split('#'))
+    print(p)
+    r = requests.get(f"https://ow-api.com/v1/stats/{platform}/{region}/{p}/profile")
+    print(r.json())
+    await ctx.send(str(r.json()))
+
+@bot.command()
+async def apexstats(ctx,platform,platformUserIdentifier):
+    r = requests.get(f"https://public-api.tracker.gg/v2/apex/standard/profile/{platform}/{platformUserIdentifier}")
+    print(r.json())
+
 bot.run(TOKEN)
