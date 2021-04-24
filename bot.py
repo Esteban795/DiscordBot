@@ -229,4 +229,10 @@ async def owstats(ctx,platform,region,pseudo):
     embedvar.set_thumbnail(url=r['icon'])
     embedvar.set_footer(text=f"Requested by {ctx.author}")
     await ctx.send(embed=embedvar)
+
+@bot.command()
+async def test(ctx):
+    emoji = '\N{THUMBS UP SIGN}'
+    print(ctx.message)
+    await ctx.message.add_reaction(emoji)
 bot.run(TOKEN)
