@@ -134,38 +134,35 @@ async def unban(ctx,person,*args):
     for entry in bans:
         if "{0.name}#{0.discriminator}".format(entry.user) == person:
             user = await bot.fetch_user(entry.user.id)
-            print(f'User : {user}')
             embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(entry.user),color=0xaaffaa)
-            embedVar.add_field(name="I can also send them a DM to tell them they were unbanned. Want me to do it ?",value="Type 'yes' if you want me to !")
-            embedVar.set_footer(text="They will know the reason they were unbanned but also who unbanned them (other than me, your fellow bot) !")
+            embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
-            def check1(m):
-                return m.author == ctx.author
-            ans = await bot.wait_for('message',check=check1,timeout=10)
-            if ans.content.lower() == "yes":
-                print("deban")
-                """
-                unbanDM = discord.Embed(title=f"Hello !  You just got unbanned from : {ctx.guild}.",color=0xaaffaa)
-                unbanDM.add_field(name=f"{ans.author} decided to unban you. Why ? That's what they told me : {' '.join(args)}.",value="Please, make sure not to get banned again !")
-                await user.send(embed=unbanDM)"""
-                await ctx.send("deban")
             await ctx.guild.unban(user)
             continuer = False
             break
         elif entry.user.name == person:
                 count += 1
-                key = "{0.name}#{0.discriminator}".format(entry.user)
+                key = f"{count}- {entry.user.name}#{entry.user.discriminator}"
                 dictionary[key] = entry.user.id
-                string += "{}\n".format(key)
+                string += f"{key}\n"
     if continuer:
         if count >= 1:
-            await ctx.send("Watch out ! There are {} guys named '{}' who are banned. Take a look at who you want to unban :\n{}".format(count,person,string))   
+            embedVar = discord.Embed(title=f"Uh oh. According to what you gave me, '{person}', I found {count} {'person' if count == 1 else 'people'} named like this.",color=0xaaaaff)
+            embedVar.add_field(name="Here is the list of them : ",value=string)
+            embedVar.add_field(name="How to pick the person you want to unban ?",value="Just give me the number before their name !")
+            embedVar.set_footer(text=f"Requested by {ctx.author}.")
+            await ctx.send(embed=embedVar)   
             def check(m):
                 return m.author == ctx.author 
-            ans = await bot.wait_for('message',check=check, timeout= 10)
+            ans = await bot.wait_for('message',check=check, timeout=10)
+            emoji = '\N{THUMBS UP SIGN}'
+            await ans.add_reaction(emoji)
             lines = string.split("\n")
             identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
             user = await bot.fetch_user(identifier)
+            embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(user),color=0xaaffaa)
+            embedVar.set_footer(text=f"Requested by {ctx.author}.")
+            await ctx.send(embed=embedVar)
             await ctx.guild.unban(user)
         else:
             await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
@@ -225,14 +222,17 @@ async def banlist_error(ctx,error):
 @bot.command()
 async def owstats(ctx,platform,region,pseudo):
     p = '-'.join(pseudo.split('#'))
-    print(p)
-    r = requests.get(f"https://ow-api.com/v1/stats/{platform}/{region}/{p}/profile")
-    print(r.json())
-    await ctx.send(str(r.json()))
-
+    r = requests.get(f"https://ow-api.com/v1/stats/{platform}/{region}/{p}/profile").json()
+    level = 100 * r["prestige"] +r["level"]
+    embedvar = discord.Embed(title=f"{pseudo}'s statistics !",color=0xaaffaa)
+    embedvar.add_field(name="Basic informations : ",value=f"• Level : {level}. \n • Endorsement level : {r['endorsement']}. \n • Carrier : {'private.' if r['private'] is True else 'public.'}")
+    embedvar.set_thumbnail(url=r['icon'])
+    embedvar.set_footer(text=f"Requested by {ctx.author}")
+    await ctx.send(embed=embedvar)
+    
 @bot.command()
-async def apexstats(ctx,platform,platformUserIdentifier):
-    r = requests.get(f"https://public-api.tracker.gg/v2/apex/standard/profile/{platform}/{platformUserIdentifier}")
-    print(r.json())
-
+async def test(ctx):
+    emoji = '\N{THUMBS UP SIGN}'
+    print(ctx.message)
+    await ctx.message.add_reaction(emoji)
 bot.run(TOKEN)
