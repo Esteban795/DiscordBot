@@ -6,10 +6,12 @@ from discord.ext import commands
 import requests
 from random import randint
 import json
+import time
 load_dotenv()
 bot = commands.Bot(command_prefix='$')
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
 
+music_players = {}
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
@@ -44,6 +46,7 @@ async def chucknorris(ctx,*args):#chuck norris joke will be send to the channel
         categories = ",".join(r.json()["categories"]) if len(r.json()["categories"]) > 0 else "None"
         embedVar = discord.Embed(title=f"Categories : {categories}.",color=0xaaffaa)
         embedVar.add_field(name="This joke is provided to you by : Chuck Norris himself.",value=f"{joke}")
+        embedVar.set_footer(text=f"Requested by {ctx.author}.")
         await ctx.send(embed=embedVar)
     except KeyError:
         embedVar = discord.Embed(title=f'There are no such categories as "{args[0]}".',color=0xff0000)
@@ -58,16 +61,19 @@ async def ckcategories(ctx):
     r = requests.get("https://api.chucknorris.io/jokes/categories")
     embedVar.add_field(name="Pick your favourite ! ",value="\n".join(["• {}".format(i) for i in r.json()]))
     await ctx.send(embed=embedVar)
+
 @bot.command()
 @commands.has_permissions(manage_roles = True)
 async def giverole(ctx, user: discord.Member, role: discord.Role): # $giverole [member] [role]
     await user.add_roles(role)
     await ctx.send(f'**{user}** now has the {role} role !')
+
 @bot.command()
 @commands.has_permissions(manage_roles = True)
 async def removerole(ctx,user : discord.Member, role:discord.Role): # $removerole [member] [role]
     await user.remove_roles(role)
     await ctx.send(f'**{user}** just lost the {role} role !')
+
 @bot.command()
 @commands.has_permissions(kick_members = True)
 async def kick(ctx, user: discord.Member, *string): # $kick [member] [reason]
@@ -82,18 +88,22 @@ async def kick(ctx, user: discord.Member, *string): # $kick [member] [reason]
 @commands.has_permissions(manage_messages = True) 
 async def purge(ctx,Amount:int): #Delete "Amount" messages from the current channel. $purge [int]
     await ctx.channel.purge(limit=Amount + 1)
+     
 @bot.command()
 @commands.has_permissions(administrator = True)
 async def banlist(ctx): #Displays current banlist from the server
     bans = await ctx.guild.bans()
     if len(bans) == 0:
         embedVar = discord.Embed(title="Uh oh. Looks like no one is banned on this server. Those are good news !",color=0xaaffaa)
+        embedVar.set_footer(text=f"Requested by {ctx.author}.")
         await ctx.send(embed=embedVar)
     else:
         embedVar = discord.Embed(title="Here are all the people banned on this server : ",color=0xaaffaa)
         pretty_list = ["• {}#{} for : {} ".format(entry.user.name,entry.user.discriminator,entry[0]) for entry in bans]
         embedVar.add_field(name=f"There are {len(pretty_list)} of them ! ",value="\n".join(pretty_list))
+        embedVar.set_footer(text=f"Requested by {ctx.author}.")
         await ctx.send(embed=embedVar)
+
 @bot.command()
 @commands.has_permissions(ban_members = True)
 async def ban(ctx,user : discord.Member, *string): # $ban [user] [reason]
@@ -102,6 +112,7 @@ async def ban(ctx,user : discord.Member, *string): # $ban [user] [reason]
     embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reasons}")
     await user.send(embed=embedVar)
     await user.ban(reason=reasons)
+
 @bot.command()
 @commands.has_permissions(administrator = True)
 async def perms(ctx,member:discord.Member):
@@ -138,8 +149,7 @@ async def unban(ctx,person,*args):
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
             await ctx.guild.unban(user)
-            continuer = False
-            break
+            return
         elif entry.user.name == person:
                 count += 1
                 key = f"{count}- {entry.user.name}#{entry.user.discriminator}"
@@ -155,15 +165,24 @@ async def unban(ctx,person,*args):
             def check(m):
                 return m.author == ctx.author 
             ans = await bot.wait_for('message',check=check, timeout=10)
-            emoji = '\N{THUMBS UP SIGN}'
-            await ans.add_reaction(emoji)
-            lines = string.split("\n")
-            identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
-            user = await bot.fetch_user(identifier)
-            embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(user),color=0xaaffaa)
-            embedVar.set_footer(text=f"Requested by {ctx.author}.")
-            await ctx.send(embed=embedVar)
-            await ctx.guild.unban(user)
+            
+            try:
+                emoji = '\u2705'
+                lines = string.split("\n")
+                identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
+                user = await bot.fetch_user(identifier)
+                await ctx.guild.unban(user)
+                await ans.add_reaction(emoji)
+                embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(user),color=0xaaffaa)
+                embedVar.set_footer(text=f"Requested by {ctx.author}.")
+                await ctx.send(embed=embedVar)
+            except:
+                emoji = '\u2705'
+                embedVar = discord.Embed(title="Uh oh. Something went wrong.",color=0xffaaaa)
+                embedVar.add_field(name="For some reasons, I couldn't unban the user you selected.",value="Please try again !")
+                embedVar.set_footer(text=f"Requested by {ctx.author}.")
+                await ctx.send(embed=embedVar)
+
         else:
             await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
 
@@ -223,16 +242,37 @@ async def banlist_error(ctx,error):
 async def owstats(ctx,platform,region,pseudo):
     p = '-'.join(pseudo.split('#'))
     r = requests.get(f"https://ow-api.com/v1/stats/{platform}/{region}/{p}/profile").json()
+    await ctx.send(r)
     level = 100 * r["prestige"] +r["level"]
     embedvar = discord.Embed(title=f"{pseudo}'s statistics !",color=0xaaffaa)
     embedvar.add_field(name="Basic informations : ",value=f"• Level : {level}. \n • Endorsement level : {r['endorsement']}. \n • Carrier : {'private.' if r['private'] is True else 'public.'}")
     embedvar.set_thumbnail(url=r['icon'])
-    embedvar.set_footer(text=f"Requested by {ctx.author}")
+    embedvar.set_footer(text=f"Requested by {ctx.author}.")
     await ctx.send(embed=embedvar)
 
 @bot.command()
-async def test(ctx):
-    emoji = '\N{THUMBS UP SIGN}'
-    print(ctx.message)
-    await ctx.message.add_reaction(emoji)
+async def foo(ctx,song):
+    voice_state = ctx.author.voice
+    if voice_state is None:
+        return await ctx.send('You need to be in a voice channel to use this command')
+    channel = ctx.author.voice.channel
+    vc = await channel.connect()
+    vc.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{song}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))
+
+@bot.command()
+async def play(ctx,song,*args):
+    if ctx.author.voice is None:
+        embedVar = discord.Embed(title="Uh oh. Looks like something went wrong.",color=0xffaaaa)
+        embedVar.add_field(name="You need to be in a voice channel to be able to let me sing you a song !",value="Please, join one before reentering this command.")
+        embedVar.set_footer(text=f"Requested by {ctx.author}.")
+        return await ctx.send(embed=embedVar)
+    if music_players[ctx.guild.id] is not None:
+        embedVar = discord.Embed(title="Uh oh. Looks like something went wrong.",color=0xffaaaa)
+        embedVar.add_field(name="Somebody on this server already needs me to sing him something !",value="I will be available as soon as he leaves !")
+        embedVar.set_footer(text=f"Requested by {ctx.author}.")
+        return await ctx.send(embed=embedVar)
+    channel = ctx.author.voice.channel
+    voice_client = await channel.connect()
+    music_players[ctx.guild.id] = voice_client
+
 bot.run(TOKEN)
