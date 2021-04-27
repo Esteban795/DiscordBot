@@ -7,24 +7,44 @@ import requests
 from random import randint
 import json
 import time
+import youtube_dl
+import asyncio
 load_dotenv()
 bot = commands.Bot(command_prefix='$')
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
 
-music_players = {}
+ydl_opts = {
+    'format':"bestaudio/best",
+    "postprocessors":[{
+        'key':'FFmpegExtractAudio',
+        'preferredcodec':'mp3',
+        'preferredquality':'256'
+    }]
+}
+
+class Queue():
+    def __init__(self,songs_list,context):
+        self.songs_list = songs_list
+        self.ctx = context
+        self.count = 0
+    async def prev(self):
+        if self.count == 0:
+            return "First song of the playlist. Can't go back !"
+        else:
+            self.count -= 1
+            return self.songs_list[self.count]
+    async def next(self):
+        if self.count == len(self.songs_list) - 1:
+            return "Last song of the playlist. Can't go further !"
+        else:
+            self.count += 1
+            return self.songs_list[self.count]
+
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
 
-@bot.event
-async def on_message(message): # logs file
-    if message.author != bot.user:
-        with open("logs.txt","a") as logs_file:
-            time = datetime.now()
-            logs_file.write(f"{time} ||||| Message from {message.author} : {message.content} \n")
-    if message.content.lower() in ["hello",'hi','greetings','greet','hi there']:
-        await message.channel.send("Hey {} !".format(message.author.display_name))
-    await bot.process_commands(message)
+
 
 @bot.command()
 async def echo(ctx, *args): #Repeat whatever you say
@@ -36,7 +56,7 @@ async def ck(ctx,*args):
 
 @bot.command()
 async def chucknorris(ctx,*args):#chuck norris joke will be send to the channel
-    l = len(args[0])
+    l = len(args)
     try:
         if l > 0:
             r = requests.get(f"https://api.chucknorris.io/jokes/random?category={args[0].lower()}")
@@ -222,6 +242,12 @@ async def error_displayer(ctx,error):
         await ctx.send(embed=embedVar)
     if isinstance(error,commands.MissingRequiredArgument):
         print(error.param)
+    if isinstance(error,commands.CommandInvokeError):
+        print(error)
+        embedVar = discord.Embed(title="Uh oh. Looks like something went wrong.",color=0xffaaaa)
+        embedVar.add_field(name="Somebody on this server already needs me to sing him something !",value="I will be available as soon as he leaves !")
+        embedVar.set_footer(text=f"Requested by {ctx.author}.")
+        return await ctx.send(embed=embedVar)
 @perms.error
 async def perms_error(ctx,error):
     await error_displayer(ctx,error)
@@ -238,6 +264,7 @@ async def unban_error(ctx,error):
 async def banlist_error(ctx,error):
     await error_displayer(ctx,error)
 
+    
 @bot.command()
 async def owstats(ctx,platform,region,pseudo):
     p = '-'.join(pseudo.split('#'))
@@ -250,6 +277,7 @@ async def owstats(ctx,platform,region,pseudo):
     embedvar.set_footer(text=f"Requested by {ctx.author}.")
     await ctx.send(embed=embedvar)
 
+"""
 @bot.command()
 async def foo(ctx,song):
     voice_state = ctx.author.voice
@@ -257,22 +285,35 @@ async def foo(ctx,song):
         return await ctx.send('You need to be in a voice channel to use this command')
     channel = ctx.author.voice.channel
     vc = await channel.connect()
-    vc.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{song}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))
+    vc.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{song}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))"""
 
 @bot.command()
-async def play(ctx,song,*args):
+async def play(ctx,url:str):
     if ctx.author.voice is None:
         embedVar = discord.Embed(title="Uh oh. Looks like something went wrong.",color=0xffaaaa)
         embedVar.add_field(name="You need to be in a voice channel to be able to let me sing you a song !",value="Please, join one before reentering this command.")
         embedVar.set_footer(text=f"Requested by {ctx.author}.")
         return await ctx.send(embed=embedVar)
-    if music_players[ctx.guild.id] is not None:
-        embedVar = discord.Embed(title="Uh oh. Looks like something went wrong.",color=0xffaaaa)
-        embedVar.add_field(name="Somebody on this server already needs me to sing him something !",value="I will be available as soon as he leaves !")
-        embedVar.set_footer(text=f"Requested by {ctx.author}.")
-        return await ctx.send(embed=embedVar)
     channel = ctx.author.voice.channel
     voice_client = await channel.connect()
-    music_players[ctx.guild.id] = voice_client
+    voice_client.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{song}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))
+
+@play.error
+async def play_error(ctx,error):
+    await error_displayer(ctx,error)
+
+
+@bot.command()
+async def test(ctx,l):
+    q = Queue(songs_list=l.split(" "),context=ctx)
+    while True:
+        def check(m):
+            return m.author == ctx.author
+        ans = bot.wait_for('message',check=check,timeout=10)
+        if ans.content == "next":
+            q.next()
+            
+        else:
+            q.prev()
 
 bot.run(TOKEN)
