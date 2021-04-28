@@ -201,7 +201,6 @@ class LogsManagement(commands.Cog):
             with open(f"{message.guild.id}.txt","a") as logs_file:
                 time = datetime.now()
                 logs_file.write(f"{time} ||||| Message from {message.author} in text channel {message.channel.name} : {message.content} \n")
-        await bot.process_commands(message)
     
     @commands.Cog.listener()
     async def on_guild_remove(self,guild):
@@ -212,9 +211,15 @@ class LogsManagement(commands.Cog):
 async def on_ready():
     print(f'Logged as {bot.user.name}')
 
+@bot.event
+async def on_guild_remove(ctx):
+    print(bot.guilds)
+    print("leave")
+
 @bot.command()
 async def echo(ctx, *args): #Repeat whatever you say
     await ctx.send(" ".join(args))
+
     
 @bot.command()
 async def owstats(ctx,platform,region,pseudo):
@@ -239,12 +244,9 @@ async def play(ctx,url:str):
     voice_client = await channel.connect()
     voice_client.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{url}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))
 
-@play.error
-async def play_error(ctx,error):
-    await error_displayer(ctx,error)
-
 
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
 bot.add_cog(LogsManagement(bot,os.getcwd()))
+
 bot.run(TOKEN)
