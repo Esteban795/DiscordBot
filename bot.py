@@ -115,7 +115,7 @@ class Moderation(commands.Cog):
         embedVar.add_field(name="Here they are : ",value="\n".join(["• {}".format(i[0]) for i in member.guild_permissions if i[1] is True]))
         await ctx.author.send(embed=embedVar)
 
-    @commands.command()
+    @commands.command(aliases=["clear","clearmsg"])
     @commands.has_permissions(manage_messages = True) 
     async def purge(self,ctx,Amount:int): #Delete "Amount" messages from the current channel. $purge [int]
         await ctx.channel.purge(limit=Amount + 1)
