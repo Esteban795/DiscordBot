@@ -4,13 +4,13 @@ import discord
 import os
 from discord.ext import commands
 import requests
-from random import randint
 import json
 import time
 import youtube_dl
-import asyncio
+import aiohttp
+
 load_dotenv()
-bot = commands.Bot(command_prefix='$')
+bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !")
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
 
 ydl_opts = {
@@ -21,249 +21,200 @@ ydl_opts = {
         'preferredquality':'256'
     }]
 }
+class ChuckNorris(commands.Cog):
+    def __init__(self,bot):
+        self.bot = bot
 
-class Queue():
-    def __init__(self,songs_list,context):
-        self.songs_list = songs_list
-        self.ctx = context
-        self.count = 0
-    async def prev(self):
-        if self.count == 0:
-            return "First song of the playlist. Can't go back !"
+    @commands.command(aliases=["ck","kc"])
+    async def chucknorris(self,ctx,*args):#chuck norris joke will be send to the channel
+        l = len(args)
+        try:
+            if l > 0:
+                r = requests.get(f"https://api.chucknorris.io/jokes/random?category={args[0].lower()}")
+            else:
+                r = requests.get("https://api.chucknorris.io/jokes/random")
+            joke = r.json()["value"]
+            categories = ",".join(r.json()["categories"]) if len(r.json()["categories"]) > 0 else "None"
+            embedVar = discord.Embed(title=f"Categories : {categories}.",color=0xaaffaa)
+            embedVar.add_field(name="This joke is provided to you by : Chuck Norris himself.",value=f"{joke}")
+            embedVar.set_footer(text=f"Requested by {ctx.author}.")
+            await ctx.send(embed=embedVar)
+        except KeyError:
+            embedVar = discord.Embed(title=f'There are no such categories as "{args[0]}".',color=0xff0000)
+            embedVar.add_field(name="Don't try to fool me, I'll know it.",value="I'm also telling Chuck Norris about this. Watch your back.")
+            embedVar.set_image(url="https://voi.img.pmdstatic.net/fit/http.3A.2F.2Fprd2-bone-image.2Es3-website-eu-west-1.2Eamazonaws.2Ecom.2Fvoi.2Fvar.2Fvoi.2Fstorage.2Fimages.2Fmedia.2Fmultiupload-du-25-juillet-2013.2Fchuck-norris-pl.2F8633422-1-fre-FR.2Fchuck-norris-pl.2Ejpg/460x258/quality/80/chuck-norris-vend-la-maison-qui-a-servi-de-decor-a-walker-texas-ranger.jpg")
+            embedVar.set_footer(text="Pshhh. If you have no clue what categories are available, type '$ckcategories' !")
+            await ctx.send(embed=embedVar)
+    
+    @commands.command(aliases=["ckcat","ckc","ckcategoires"])
+    async def ckcategories(self,ctx):
+        embedVar = discord.Embed(title="The categories of joke the bot can tell you.",color=0xaaffaa)
+        r = requests.get("https://api.chucknorris.io/jokes/categories")
+        embedVar.add_field(name="Pick your favourite ! ",value="\n".join(["• {}".format(i) for i in r.json()]))
+        await ctx.send(embed=embedVar)
+
+class Moderation(commands.Cog):
+    def __init__(self,bot):
+        self.bot = bot
+    
+    @commands.command(aliases=["addrole","roleadd"])
+    @commands.has_permissions(manage_roles=True)
+    async def giverole(self,ctx,user:discord.Member,role:discord.Role):
+        await user.add_roles(role)
+        embedVar = discord.Embed(description=f"{user} was granted the {role} role.",color=0xaaffaa)
+        embedVar.set_footer(text=f"Requested by {ctx.author}.")
+        await ctx.send(embed=embedVar)
+
+    @commands.command(aliases=["rmvrole"])
+    @commands.has_permissions(manage_roles = True)
+    async def removerole(self,ctx,user : discord.Member, role:discord.Role): # $removerole [member] [role]
+        await user.remove_roles(role)
+        embedVar = discord.Embed(description=f"{user} lost the {role} role.",color=0xaaffaa)
+        embedVar.set_footer(text=f"Requested by {ctx.author}.")
+        await ctx.send(embed=embedVar)
+
+    @commands.command(aliases=["gtfo"])
+    @commands.has_permissions(kick_members = True)
+    async def kick(self,ctx, user: discord.Member, *,reason="Not specified."): # $kick [member] [reason]
+        PMembed = discord.Embed(title="Uh oh. Looks like you did something quite bad !",color=0xff0000)
+        PMembed.add_field(name=f"You were kicked from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
+        await user.send(embed=PMembed)
+        await user.kick(reason=reason)
+        embedVar = discord.Embed(description=f"{user} was successfully kicked from the server.",color=0xaaffaa)
+        embedVar.set_footer(text=f"Requested by {ctx.author}.")
+        await ctx.send(embed=embedVar)
+
+    @commands.command(aliases=["banl","bl"])
+    @commands.has_permissions(administrator = True)
+    async def banlist(self,ctx): #Displays current banlist from the server
+        bans = await ctx.guild.bans()
+        if len(bans) == 0:
+            embedVar = discord.Embed(title="Uh oh. Looks like no one is banned on this server. Those are good news !",color=0xaaffaa)
+            embedVar.set_footer(text=f"Requested by {ctx.author}.")
+            await ctx.send(embed=embedVar)
         else:
-            self.count -= 1
-            return self.songs_list[self.count]
-    async def next(self):
-        if self.count == len(self.songs_list) - 1:
-            return "Last song of the playlist. Can't go further !"
-        else:
-            self.count += 1
-            return self.songs_list[self.count]
+            embedVar = discord.Embed(title="Here are all the people banned on this server : ",color=0xaaffaa)
+            pretty_list = ["• {}#{} for : {} ".format(entry.user.name,entry.user.discriminator,entry[0]) for entry in bans]
+            embedVar.add_field(name=f"There are {len(pretty_list)} of them ! ",value="\n".join(pretty_list))
+            embedVar.set_footer(text=f"Requested by {ctx.author}.")
+            await ctx.send(embed=embedVar)
+    
+    @commands.command(aliases=["b","bna"])
+    @commands.has_permissions(ban_members = True)
+    async def ban(self,ctx,user : discord.Member, *,reason="Not specified."): # $ban [user] [reason]
+        embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
+        embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
+        embedVar.set_footer(text=f"Requested by {ctx.author}.")
+        await user.send(embed=embedVar)
+        await user.ban(reason=reason)
+
+    @commands.command(aliases=["p","perrms"])
+    @commands.has_permissions(administrator = True)
+    async def perms(self,ctx,member:discord.Member):
+        embedVar = discord.Embed(title=f"You asked for {member}'s permissions on {ctx.guild}.",color=0xaaaaff)
+        embedVar.add_field(name="Here they are : ",value="\n".join(["• {}".format(i[0]) for i in member.guild_permissions if i[1] is True]))
+        await ctx.author.send(embed=embedVar)
+
+    @commands.command()
+    @commands.has_permissions(manage_messages = True) 
+    async def purge(self,ctx,Amount:int): #Delete "Amount" messages from the current channel. $purge [int]
+        await ctx.channel.purge(limit=Amount + 1)
+
+    @commands.command(aliases=["u","unbna"])
+    @commands.has_permissions(ban_members = True)
+    async def unban(self,ctx,person,*,reason="Not specified."):
+        bans = await ctx.guild.bans()
+        if len(bans) == 0:
+            embedVar = discord.Embed(title="Uh oh. Looks like no one is banned on this server. Those are good news !",color=0xaaffaa)
+            return await ctx.send(embed=embedVar)
+        elif person == "all":
+            for entry in bans:
+                user = await bot.fetch_user(entry.user.id)
+                await ctx.guild.unban(user)
+                embedVar = discord.Embed(title="All members have been successfully unbanned !",color=0xaaffaa)
+                await ctx.send(embed=embedVar)
+                return
+        count = 0
+        dictionary = dict()
+        string = ""
+        continuer = True
+        for entry in bans:
+            if "{0.name}#{0.discriminator}".format(entry.user) == person:
+                user = await bot.fetch_user(entry.user.id)
+                embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(entry.user),color=0xaaffaa)
+                embedVar.set_footer(text=f"Requested by {ctx.author}.")
+                await ctx.send(embed=embedVar)
+                await ctx.guild.unban(user,reason)
+                return
+            elif entry.user.name == person:
+                    count += 1
+                    key = f"{count}- {entry.user.name}#{entry.user.discriminator}"
+                    dictionary[key] = entry.user.id
+                    string += f"{key}\n"
+        if continuer:
+            if count >= 1:
+                embedVar = discord.Embed(title=f"Uh oh. According to what you gave me, '{person}', I found {count} {'person' if count == 1 else 'people'} named like this.",color=0xaaaaff)
+                embedVar.add_field(name="Here is the list of them : ",value=string)
+                embedVar.add_field(name="How to pick the person you want to unban ?",value="Just give me the number before their name !")
+                embedVar.set_footer(text=f"Requested by {ctx.author}.")
+                await ctx.send(embed=embedVar)   
+                def check(m):
+                    return m.author == ctx.author 
+                ans = await bot.wait_for('message',check=check, timeout=10)
+                
+                try:
+                    emoji = '\u2705'
+                    lines = string.split("\n")
+                    identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
+                    user = await bot.fetch_user(identifier)
+                    await ctx.guild.unban(user)
+                    await ans.add_reaction(emoji)
+                    embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(user),color=0xaaffaa)
+                    embedVar.set_footer(text=f"Requested by {ctx.author}.")
+                    await ctx.send(embed=embedVar)
+                except:
+                    emoji = '\u2705'
+                    embedVar = discord.Embed(title="Uh oh. Something went wrong.",color=0xffaaaa)
+                    embedVar.add_field(name="For some reasons, I couldn't unban the user you selected.",value="Please try again !")
+                    embedVar.set_footer(text=f"Requested by {ctx.author}.")
+                    await ctx.send(embed=embedVar)
+
+            else:
+                await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
+
+class LogsManagement(commands.Cog):
+    def __init__(self,bot,path):
+        self.bot = bot
+        self.path = path
+
+    @commands.Cog.listener()
+    async def on_guild_join(self,guild):
+        guild_id = self.bot.guilds[-1].id
+        os.chdir("./logs")
+        if not os.path.isfile(f"{guild_id}.txt"):
+            with open(f"{guild_id}.txt","w") as logs:
+                logs.write(f"The log file for {guild} starts here. ID of the guild : {guild_id}. \n \n")
+
+    @commands.Cog.listener()
+    async def on_message(self,message):
+        if message.author != bot.user:
+            with open(f"{message.guild.id}.txt","a") as logs_file:
+                time = datetime.now()
+                logs_file.write(f"{time} ||||| Message from {message.author} in text channel {message.channel.name} : {message.content} \n")
+        await bot.process_commands(message)
+    
+    @commands.Cog.listener()
+    async def on_guild_remove(self,guild):
+        print(self.bot.guilds)
+        print(guild)
 
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
 
-
-
 @bot.command()
 async def echo(ctx, *args): #Repeat whatever you say
     await ctx.send(" ".join(args))
-
-@bot.command()
-async def ck(ctx,*args):
-    await chucknorris(ctx," ".join(args))
-
-@bot.command()
-async def chucknorris(ctx,*args):#chuck norris joke will be send to the channel
-    l = len(args)
-    try:
-        if l > 0:
-            r = requests.get(f"https://api.chucknorris.io/jokes/random?category={args[0].lower()}")
-        else:
-            r = requests.get("https://api.chucknorris.io/jokes/random")
-        joke = r.json()["value"]
-        categories = ",".join(r.json()["categories"]) if len(r.json()["categories"]) > 0 else "None"
-        embedVar = discord.Embed(title=f"Categories : {categories}.",color=0xaaffaa)
-        embedVar.add_field(name="This joke is provided to you by : Chuck Norris himself.",value=f"{joke}")
-        embedVar.set_footer(text=f"Requested by {ctx.author}.")
-        await ctx.send(embed=embedVar)
-    except KeyError:
-        embedVar = discord.Embed(title=f'There are no such categories as "{args[0]}".',color=0xff0000)
-        embedVar.add_field(name="Don't try to fool me, I'll know it.",value="I'm also telling Chuck Norris about this. Watch your back.")
-        embedVar.set_image(url="https://voi.img.pmdstatic.net/fit/http.3A.2F.2Fprd2-bone-image.2Es3-website-eu-west-1.2Eamazonaws.2Ecom.2Fvoi.2Fvar.2Fvoi.2Fstorage.2Fimages.2Fmedia.2Fmultiupload-du-25-juillet-2013.2Fchuck-norris-pl.2F8633422-1-fre-FR.2Fchuck-norris-pl.2Ejpg/460x258/quality/80/chuck-norris-vend-la-maison-qui-a-servi-de-decor-a-walker-texas-ranger.jpg")
-        embedVar.set_footer(text="Pshhh. If you have no clue what categories are available, type '$ckcategories' !")
-        await ctx.send(embed=embedVar)
-
-@bot.command()
-async def ckcategories(ctx):
-    embedVar = discord.Embed(title="The categories of joke the bot can tell you.",color=0xaaffaa)
-    r = requests.get("https://api.chucknorris.io/jokes/categories")
-    embedVar.add_field(name="Pick your favourite ! ",value="\n".join(["• {}".format(i) for i in r.json()]))
-    await ctx.send(embed=embedVar)
-
-@bot.command()
-@commands.has_permissions(manage_roles = True)
-async def giverole(ctx, user: discord.Member, role: discord.Role): # $giverole [member] [role]
-    await user.add_roles(role)
-    await ctx.send(f'**{user}** now has the {role} role !')
-
-@bot.command()
-@commands.has_permissions(manage_roles = True)
-async def removerole(ctx,user : discord.Member, role:discord.Role): # $removerole [member] [role]
-    await user.remove_roles(role)
-    await ctx.send(f'**{user}** just lost the {role} role !')
-
-@bot.command()
-@commands.has_permissions(kick_members = True)
-async def kick(ctx, user: discord.Member, *string): # $kick [member] [reason]
-    reasons = " ".join(string)
-    embedVar = discord.Embed(title="Uh oh. Looks like you did something quite bad !",color=0xff0000)
-    embedVar.add_field(name=f"You were kicked from {ctx.guild} by {ctx.author}.",value=f"Reason : {reasons}")
-    await ctx.send(f"**{user}** was kicked from the server !")
-    await user.send(embed=embedVar)
-    await user.kick(reason=reasons)
-
-@bot.command()
-@commands.has_permissions(manage_messages = True) 
-async def purge(ctx,Amount:int): #Delete "Amount" messages from the current channel. $purge [int]
-    await ctx.channel.purge(limit=Amount + 1)
-     
-@bot.command()
-@commands.has_permissions(administrator = True)
-async def banlist(ctx): #Displays current banlist from the server
-    bans = await ctx.guild.bans()
-    if len(bans) == 0:
-        embedVar = discord.Embed(title="Uh oh. Looks like no one is banned on this server. Those are good news !",color=0xaaffaa)
-        embedVar.set_footer(text=f"Requested by {ctx.author}.")
-        await ctx.send(embed=embedVar)
-    else:
-        embedVar = discord.Embed(title="Here are all the people banned on this server : ",color=0xaaffaa)
-        pretty_list = ["• {}#{} for : {} ".format(entry.user.name,entry.user.discriminator,entry[0]) for entry in bans]
-        embedVar.add_field(name=f"There are {len(pretty_list)} of them ! ",value="\n".join(pretty_list))
-        embedVar.set_footer(text=f"Requested by {ctx.author}.")
-        await ctx.send(embed=embedVar)
-
-@bot.command()
-@commands.has_permissions(ban_members = True)
-async def ban(ctx,user : discord.Member, *string): # $ban [user] [reason]
-    reasons = " ".join(string) if len(string) > 0 else "Not specified."
-    embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
-    embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reasons}")
-    await user.send(embed=embedVar)
-    await user.ban(reason=reasons)
-
-@bot.command()
-@commands.has_permissions(administrator = True)
-async def perms(ctx,member:discord.Member):
-    embedVar = discord.Embed(title=f"You asked for {member}'s permissions on {ctx.guild}.",color=0xaaaaff)
-    embedVar.add_field(name="Here they are : ",value="\n".join(["• {} : {}".format(i[0],i[1]) for i in member.guild_permissions]))
-    await ctx.author.send(embed=embedVar)
-
-
-
-
-@bot.command()
-@commands.has_permissions(ban_members = True)
-async def unban(ctx,person,*args):
-    bans = await ctx.guild.bans()
-    if len(bans) == 0:
-        embedVar = discord.Embed(title="Uh oh. Looks like no one is banned on this server. Those are good news !",color=0xaaffaa)
-        await ctx.send(embed=embedVar)
-        return
-    elif person == "all":
-        for entry in bans:
-            user = await bot.fetch_user(entry.user.id)
-            await ctx.guild.unban(user)
-            embedVar = discord.Embed(title="All members have been successfully unbanned !",color=0xaaffaa)
-            await ctx.send(embed=embedVar)
-            return
-    count = 0
-    dictionary = dict()
-    string = ""
-    continuer = True
-    for entry in bans:
-        if "{0.name}#{0.discriminator}".format(entry.user) == person:
-            user = await bot.fetch_user(entry.user.id)
-            embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(entry.user),color=0xaaffaa)
-            embedVar.set_footer(text=f"Requested by {ctx.author}.")
-            await ctx.send(embed=embedVar)
-            await ctx.guild.unban(user)
-            return
-        elif entry.user.name == person:
-                count += 1
-                key = f"{count}- {entry.user.name}#{entry.user.discriminator}"
-                dictionary[key] = entry.user.id
-                string += f"{key}\n"
-    if continuer:
-        if count >= 1:
-            embedVar = discord.Embed(title=f"Uh oh. According to what you gave me, '{person}', I found {count} {'person' if count == 1 else 'people'} named like this.",color=0xaaaaff)
-            embedVar.add_field(name="Here is the list of them : ",value=string)
-            embedVar.add_field(name="How to pick the person you want to unban ?",value="Just give me the number before their name !")
-            embedVar.set_footer(text=f"Requested by {ctx.author}.")
-            await ctx.send(embed=embedVar)   
-            def check(m):
-                return m.author == ctx.author 
-            ans = await bot.wait_for('message',check=check, timeout=10)
-            
-            try:
-                emoji = '\u2705'
-                lines = string.split("\n")
-                identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
-                user = await bot.fetch_user(identifier)
-                await ctx.guild.unban(user)
-                await ans.add_reaction(emoji)
-                embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(user),color=0xaaffaa)
-                embedVar.set_footer(text=f"Requested by {ctx.author}.")
-                await ctx.send(embed=embedVar)
-            except:
-                emoji = '\u2705'
-                embedVar = discord.Embed(title="Uh oh. Something went wrong.",color=0xffaaaa)
-                embedVar.add_field(name="For some reasons, I couldn't unban the user you selected.",value="Please try again !")
-                embedVar.set_footer(text=f"Requested by {ctx.author}.")
-                await ctx.send(embed=embedVar)
-
-        else:
-            await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
-
-@bot.command()
-async def numberguessing(ctx,limit:int):
-    await ctx.send("Let's go ! You will have 10 seconds to answer each time !")
-    continuer = True
-    score = 0
-    randomnumber = randint(1,limit)
-    while continuer:
-        def check(m):
-            return m.author == ctx.author
-        response = await bot.wait_for('message',check=check,timeout=10)   
-        answer = int("{0.content}".format(response))
-        if answer == randomnumber:
-            score += 1
-            await ctx.send("It only took you {} tries to guess the number. Congrats !".format(score))
-            continuer = False
-        elif answer < randomnumber:
-            score += 1
-            await ctx.send("The number I have in mind is bigger !")
-        elif answer > randomnumber:
-            score += 1
-            await ctx.send("The number I have in mind is smaller !")
-@bot.command()
-async def clearlogs(ctx):
-    with open("logs.txt","w"):
-        await ctx.send("I just cleared the log file !")
-
-#Error handling !
-
-async def error_displayer(ctx,error):
-    if isinstance(error,commands.MissingPermissions):
-        missing_perms = " or ".join([" ".join(i.split('_')) for i in error.missing_perms])
-        embedVar = discord.Embed(title="Uh oh. Something is not going as expected.",color=0xff0000)
-        embedVar.add_field(name=f"{ctx.author}, you don't have access to this command.",value=f"You require {missing_perms} permissions to do so !")
-        await ctx.send(embed=embedVar)
-    if isinstance(error,commands.MissingRequiredArgument):
-        print(error.param)
-    if isinstance(error,commands.CommandInvokeError):
-        print(error)
-        embedVar = discord.Embed(title="Uh oh. Looks like something went wrong.",color=0xffaaaa)
-        embedVar.add_field(name="Somebody on this server already needs me to sing him something !",value="I will be available as soon as he leaves !")
-        embedVar.set_footer(text=f"Requested by {ctx.author}.")
-        return await ctx.send(embed=embedVar)
-@perms.error
-async def perms_error(ctx,error):
-    await error_displayer(ctx,error)
-@ban.error
-async def ban_error(ctx,error):
-    await error_displayer(ctx,error)
-@kick.error
-async def kick_error(ctx,error):
-    await error_displayer(ctx,error)
-@unban.error
-async def unban_error(ctx,error):
-    await error_displayer(ctx,error)
-@banlist.error
-async def banlist_error(ctx,error):
-    await error_displayer(ctx,error)
-
     
 @bot.command()
 async def owstats(ctx,platform,region,pseudo):
@@ -277,16 +228,6 @@ async def owstats(ctx,platform,region,pseudo):
     embedvar.set_footer(text=f"Requested by {ctx.author}.")
     await ctx.send(embed=embedvar)
 
-"""
-@bot.command()
-async def foo(ctx,song):
-    voice_state = ctx.author.voice
-    if voice_state is None:
-        return await ctx.send('You need to be in a voice channel to use this command')
-    channel = ctx.author.voice.channel
-    vc = await channel.connect()
-    vc.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{song}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))"""
-
 @bot.command()
 async def play(ctx,url:str):
     if ctx.author.voice is None:
@@ -296,24 +237,14 @@ async def play(ctx,url:str):
         return await ctx.send(embed=embedVar)
     channel = ctx.author.voice.channel
     voice_client = await channel.connect()
-    voice_client.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{song}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))
+    voice_client.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{url}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))
 
 @play.error
 async def play_error(ctx,error):
     await error_displayer(ctx,error)
 
 
-@bot.command()
-async def test(ctx,l):
-    q = Queue(songs_list=l.split(" "),context=ctx)
-    while True:
-        def check(m):
-            return m.author == ctx.author
-        ans = bot.wait_for('message',check=check,timeout=10)
-        if ans.content == "next":
-            q.next()
-            
-        else:
-            q.prev()
-
+bot.add_cog(ChuckNorris(bot))
+bot.add_cog(Moderation(bot))
+bot.add_cog(LogsManagement(bot,os.getcwd()))
 bot.run(TOKEN)
