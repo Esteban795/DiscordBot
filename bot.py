@@ -5,9 +5,8 @@ import os
 from discord.ext import commands
 import requests
 import json
-import time
-import youtube_dl
-import typing
+import asyncio
+
 load_dotenv()
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
@@ -56,6 +55,16 @@ class Moderation(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
     
+    @commands.Cog.listener()
+    async def on_guild_join(self,guild:discord.Guild):
+        """Create the role muted as soon as the bot joins the guild, if no muted role exist"""
+        if "muted"  in guild.roles or "Muted" in guild.roles:
+            pass
+        else:
+            mutedRole = await guild.create_role(name="Muted",permissions=discord.Permissions(send_messages=False,speak=False))
+            for channel in guild.channels:
+                await channel.set_permissions(mutedRole, send_messages = False, speak = False)
+    
     @commands.command(aliases=["addrole","roleadd"])
     @commands.has_permissions(manage_roles=True)
     async def giverole(self,ctx,user:discord.Member,role:discord.Role):
@@ -83,6 +92,21 @@ class Moderation(commands.Cog):
         embedVar.set_footer(text=f"Requested by {ctx.author}.")
         await ctx.send(embed=embedVar)
 
+    @commands.command()
+    @commands.has_permissions()
+    async def mute(self,ctx,user:discord.Member,time:str=None):
+        mutedRole = [role for role in ctx.guild.roles if role.name == "Muted"][0]
+        await user.add_roles(mutedRole)
+        if time is not None:
+            await asyncio.sleep(int(time))
+            await user.remove_roles(mutedRole)
+    
+    @commands.command(aliases=["demute"])
+    @commands.has_permissions()
+    async def unmute(self,ctx,user:discord.Member):
+        mutedRole = [role for role in ctx.guild.roles if role.name == "Muted"][0]
+        await user.remove_roles(mutedRole)
+
     @commands.command(aliases=["banl","bl"])
     @commands.has_permissions(administrator = True)
     async def banlist(self,ctx): #Displays current banlist from the server
@@ -97,27 +121,18 @@ class Moderation(commands.Cog):
             embedVar.add_field(name=f"There are {len(pretty_list)} of them ! ",value="\n".join(pretty_list))
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
-    
+
     @commands.command(aliases=["b","bna"])
     @commands.has_permissions(ban_members = True)
-    async def ban(self,ctx,user : discord.Member, *,reason="Not specified."): # $ban [user] [reason]
+    async def ban(self,ctx,user : discord.Member,time:str=None, *,reason="Not specified."): # $ban [user] [reason]
         embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
         embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
         embedVar.set_footer(text=f"Requested by {ctx.author}.")
         await user.send(embed=embedVar)
         await user.ban(reason=reason)
-
-    @commands.command(aliases=["p","perrms"])
-    @commands.has_permissions(administrator = True)
-    async def perms(self,ctx,member:discord.Member):
-        embedVar = discord.Embed(title=f"You asked for {member}'s permissions on {ctx.guild}.",color=0xaaaaff)
-        embedVar.add_field(name="Here they are : ",value="\n".join(["• {}".format(i[0]) for i in member.guild_permissions if i[1] is True]))
-        await ctx.author.send(embed=embedVar)
-
-    @commands.command(aliases=["clear","clearmsg"])
-    @commands.has_permissions(manage_messages = True) 
-    async def purge(self,ctx,Amount:int): #Delete "Amount" messages from the current channel. $purge [int]
-        await ctx.channel.purge(limit=Amount + 1)
+        if time is not None:
+            await asyncio.sleep(int(time))
+            await ctx.guild.unban(user,reason="Ban duration is over.")
 
     @commands.command(aliases=["u","unbna"])
     @commands.has_permissions(ban_members = True)
@@ -131,8 +146,7 @@ class Moderation(commands.Cog):
                 user = await bot.fetch_user(entry.user.id)
                 await ctx.guild.unban(user)
                 embedVar = discord.Embed(title="All members have been successfully unbanned !",color=0xaaffaa)
-                await ctx.send(embed=embedVar)
-                return
+                return await ctx.send(embed=embedVar)
         count = 0
         dictionary = dict()
         string = ""
@@ -143,8 +157,7 @@ class Moderation(commands.Cog):
                 embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(entry.user),color=0xaaffaa)
                 embedVar.set_footer(text=f"Requested by {ctx.author}.")
                 await ctx.send(embed=embedVar)
-                await ctx.guild.unban(user,reason)
-                return
+                return await ctx.guild.unban(user,reason=reason)
             elif entry.user.name == person:
                     count += 1
                     key = f"{count}- {entry.user.name}#{entry.user.discriminator}"
@@ -160,7 +173,6 @@ class Moderation(commands.Cog):
                 def check(m):
                     return m.author == ctx.author 
                 ans = await bot.wait_for('message',check=check, timeout=10)
-                
                 try:
                     emoji = '\u2705'
                     lines = string.split("\n")
@@ -177,9 +189,22 @@ class Moderation(commands.Cog):
                     embedVar.add_field(name="For some reasons, I couldn't unban the user you selected.",value="Please try again !")
                     embedVar.set_footer(text=f"Requested by {ctx.author}.")
                     await ctx.send(embed=embedVar)
-
             else:
                 await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
+
+    @commands.command(aliases=["p","perrms"])
+    @commands.has_permissions(administrator = True)
+    async def perms(self,ctx,member:discord.Member):
+        embedVar = discord.Embed(title=f"You asked for {member}'s permissions on {ctx.guild}.",color=0xaaaaff)
+        embedVar.add_field(name="Here they are : ",value="\n".join(["• {}".format(i[0]) for i in member.guild_permissions if i[1] is True]))
+        await ctx.author.send(embed=embedVar)
+
+    @commands.command(aliases=["clear","clearmsg"])
+    @commands.has_permissions(manage_messages = True) 
+    async def purge(self,ctx,Amount:int): #Delete "Amount" messages from the current channel. $purge [int]
+        await ctx.channel.purge(limit=Amount + 1)
+
+    
 
 class LogsManagement(commands.Cog):
     def __init__(self,bot,path):
@@ -225,16 +250,24 @@ class LogsManagement(commands.Cog):
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
 
+class Music(commands.Cog):
+    def __init__(self,bot):
+        self.bot = bot
+        self.queue = asyncio.Queue()
+
+    @commands.command(aliases=["song"])
+    async def play(self,ctx,url:str.startswith("https://www.youtube.com/watch","https://www.youtube.com/watch")):
+        print("url acceptée")
+
+
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
-
 
 @bot.command()
 async def echo(ctx, *args): #Repeat whatever you say
     await ctx.send(" ".join(args))
 
-    
 @bot.command()
 async def owstats(ctx,platform,region,pseudo):
     p = '-'.join(pseudo.split('#'))
@@ -246,7 +279,7 @@ async def owstats(ctx,platform,region,pseudo):
     embedvar.set_thumbnail(url=r['icon'])
     embedvar.set_footer(text=f"Requested by {ctx.author}.")
     await ctx.send(embed=embedvar)
-
+"""
 @bot.command()
 async def play(ctx,url:str):
     if ctx.author.voice is None:
@@ -256,7 +289,7 @@ async def play(ctx,url:str):
         return await ctx.send(embed=embedVar)
     channel = ctx.author.voice.channel
     voice_client = await channel.connect()
-    voice_client.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{url}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))
+    voice_client.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{url}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))"""
 
 @bot.command()
 @commands.has_permissions(administrator=True)
@@ -269,5 +302,5 @@ async def spam(ctx,member):
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
 bot.add_cog(LogsManagement(bot,os.getcwd()))
-
+bot.add_cog(Music(bot))
 bot.run(TOKEN)
