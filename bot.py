@@ -7,10 +7,9 @@ import requests
 import json
 import time
 import youtube_dl
-import aiohttp
-
+import typing
 load_dotenv()
-bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !")
+bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
 
 ydl_opts = {
@@ -189,32 +188,47 @@ class LogsManagement(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_join(self,guild):
-        guild_id = self.bot.guilds[-1].id
-        os.chdir("./logs")
-        if not os.path.isfile(f"{guild_id}.txt"):
-            with open(f"{guild_id}.txt","w") as logs:
+        guild_id = guild.id
+        if os.path.isdir("logs"):
+            os.chdir("logs")
+        if not os.path.isfile(f"logs_{guild_id}.txt"):
+            with open(f"logs_{guild_id}.txt","w") as logs:
                 logs.write(f"The log file for {guild} starts here. ID of the guild : {guild_id}. \n \n")
 
     @commands.Cog.listener()
     async def on_message(self,message):
+        if os.path.isdir("logs"):
+            os.chdir("logs")
         if message.author != bot.user:
-            with open(f"{message.guild.id}.txt","a") as logs_file:
+            with open(f"logs_{message.guild.id}.txt","a") as logs_file:
                 time = datetime.now()
                 logs_file.write(f"{time} ||||| Message from {message.author} in text channel {message.channel.name} : {message.content} \n")
-    
-    @commands.Cog.listener()
+
+    @commands.Cog.listener()             
     async def on_guild_remove(self,guild):
-        print(self.bot.guilds)
-        print(guild)
+        if os.path.isdir("logs"):
+            os.chdir("logs")
+        guild_id = guild.id
+        os.remove(f"logs_{guild_id}.txt")
+    
+    @commands.command(aliases=["uplogs"])
+    @commands.has_permissions(administrator=True)
+    async def uploadlogs(self,ctx,channel:discord.TextChannel=None):
+        try:
+            if os.path.isdir("logs"):
+                os.chdir("logs")
+            await ctx.author.send(file=discord.File(f"logs_{ctx.guild.id}.txt"))
+        except FileNotFoundError:
+            embedVar = discord.Embed(title="Uh oh. Something went wrong.",
+            description="The logs file for this guide doesn't exist. Want to create it ? Type 'yes if you want to create right now a log file !",
+            color=0xff0000)
+            embedVar.set_footer(text=f"Requested by {ctx.author}.")
+            await ctx.send(embed=embedVar)
 
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
 
-@bot.event
-async def on_guild_remove(ctx):
-    print(bot.guilds)
-    print("leave")
 
 @bot.command()
 async def echo(ctx, *args): #Repeat whatever you say
@@ -243,6 +257,13 @@ async def play(ctx,url:str):
     channel = ctx.author.voice.channel
     voice_client = await channel.connect()
     voice_client.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{url}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def spam(ctx,member):
+    for i in range(50):
+        await ctx.send(member)
+    await ctx.channel.purge(limit=51)
 
 
 bot.add_cog(ChuckNorris(bot))
