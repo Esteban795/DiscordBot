@@ -7,6 +7,7 @@ import requests
 import json
 import asyncio
 
+
 load_dotenv()
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
@@ -218,14 +219,37 @@ class LogsManagement(commands.Cog):
         await ctx.send(self.logs_channels)
 
     @commands.Cog.listener()
+    async def on_raw_message_delete(self,payload):
+        print(f"Payload : {payload}")
+        print(f"Payload message : {payload.cached_message.content}")
+
+    @commands.Cog.listener()
     async def on_ready(self):
         """Loads json file with every logs channel for guilds."""
         with open("logs/logs_channels.json","r") as f:
             self.logs_channels = json.load(f)
+        
+    @commands.Cog.listener()
+    async def on_guild_join(self,guild):
+        self.logs_channels[str(guild.id)] = None
+
+    @commands.Cog.listener()
+    async def on_guild_remove(self,guild):
+        del self.logs_channels[str(guild.id)]
+    
+    @commands.Cog.listener()
+    async def on_message(self,message:discord.Message):
+        if message.author != bot.user:
+            if str(message.guild.id) in self.logs_channels and message.channel.id != self.logs_channels[str(message.guild.id)]:
+                channel = await self.bot.fetch_channel(self.logs_channels[str(message.guild.id)])
+                embedVar = discord.Embed(title="New message !",color=0xaaaaaa,timestamp=message.created_at)
+                embedVar.set_author(name=f"{message.author}",icon_url=message.author.avatar_url)
+                embedVar.add_field(name=f"Message content : ",value=f"[{message.content}](https://discord.com/channels/{message.guild.id}/{message.channel.id}/{message.id})",inline=False)
+                embedVar.add_field(name="Channel : ",value=f"[{message.channel}](https://discord.com/channels/{message.guild.id}/{message.channel.id})",inline=True)
+                await channel.send(embed=embedVar)
 
     @commands.command(aliases=["logschannel","logssetup"])
     async def setuplogs(self,ctx,channel:discord.TextChannel):
-        """Sets up a log channel where every actions on the server will be written here"""
         self.logs_channels[str(ctx.guild.id)] = channel.id
         with open("logs/logs_channels.json","w") as f:
             json.dump(self.logs_channels,f,indent=4)
@@ -234,50 +258,15 @@ class LogsManagement(commands.Cog):
         value="Messages sent in this channel obviously won't be shown.")
         embedVar.set_footer(text="Want to change the logs channel ? Type '$setuplogs [channel]' !")
         await channel.send(embed=embedVar)
-        
-
-    @commands.Cog.listener()
-    async def on_guild_join(self,guild):
-        guild_id = guild.id
-        if not os.path.isfile(f"logs/logs_{guild_id}.txt"):
-            with open(f"logs/logs_{guild_id}.txt","w") as logs:
-                logs.write(f"The log file for {guild} starts here. ID of the guild : {guild_id}. \n \n")
-
-    @commands.Cog.listener()
-    async def on_message(self,message:discord.Message):
-        if message.author != bot.user:
-            with open(f"logs/logs_{message.guild.id}.txt","a") as logs_file:
-                time = datetime.now()
-                logs_file.write(f"{time} ||||| Message from {message.author} in text channel {message.channel.name} : {message.content} \n")
-            if str(message.guild.id) in self.logs_channels:
-                channel = await self.bot.fetch_channel(self.logs_channels[str(message.guild.id)])
-                embedVar = discord.Embed(title="New message !",color=0xaaaaaa,timestamp=message.created_at)
-                embedVar.set_author(name=f"{message.author}",icon_url=message.author.avatar_url)
-                embedVar.add_field(name=f"Message content : ",value=f"[{message.content}](https://discord.com/channels/{message.guild.id}/{message.channel.id}/{message.id})",inline=True)
-                embedVar.add_field(name="Channel : ",value=f"[{message.channel}](https://discord.com/channels/{message.guild.id}/{message.channel.id})",inline=True)
-                await channel.send(embed=embedVar)
-    @commands.Cog.listener()
-    async def on_guild_remove(self,guild):
-        guild_id = guild.id
-        os.remove(f"logs/logs_{guild_id}.txt")
     
-    @commands.command(aliases=["uplogs"])
-    @commands.has_permissions(administrator=True)
-    async def uploadlogs(self,ctx,channel:discord.TextChannel=None):
-        try:
-            await ctx.author.send(file=discord.File(f"logs/logs_{ctx.guild.id}.txt"))
-        except FileNotFoundError:
-            embedVar = discord.Embed(title="Uh oh. Something went wrong.",
-            description="The logs file for this guide doesn't exist. Want to create it ? Type 'yes if you want to create right now a log file !",
-            color=0xff0000)
-            embedVar.set_footer(text=f"Requested by {ctx.author}.")
-            await ctx.send(embed=embedVar)
-            def check(m):
-                return m.author == ctx.author
-            ans = await bot.wait_for('message',check=check,timeout=10)
-            if ans.content.lower() == "yes":
-                with open(f"logs_{ctx.guild.id}.txt","w") as logs:
-                    logs.write(f"The log file for {ctx.guild} starts here. ID of the guild : {ctx.guild.id}. \n \n")
+    @commands.command(aliases=["rmvlogschannel"])
+    async def removelogschannel(self,ctx):
+        channel = await bot.fetch_channel(self.logs_channels[str(ctx.guild.id)])
+        embedVar = discord.Embed(title=f"{ctx.author} chose to not have logs in {channel}.",description="You can always add a log channel later by typing '$setuplogs [channel]' !",color=0x00ff00)
+        del self.logs_channels[str(ctx.guild.id)]
+        with open("logs/logs_channels.json","w") as f:
+            json.dump(self.logs_channels,f)
+        await channel.send(embed=embedVar)
 
 class Music(commands.Cog):
     def __init__(self,bot):
@@ -324,6 +313,21 @@ class Music(commands.Cog):
             return await ctx.send(embed=embedVar)
         await self.summon(ctx)
 
+class Fun(commands.Cog):
+    def __init__(self,bot):
+        self.bot = bot
+    
+    @commands.command(name="0_asked",aliases=["idc","wdc"])
+    async def _0_asked(self,ctx):
+        await ctx.channel.purge(limit=1)
+        await ctx.send("https://cdn.discordapp.com/attachments/661012297723936788/782077784369397790/mj7gpmz23jr51.png")
+
+    @commands.command()
+    @commands.has_permissions(administrator=True)
+    async def spam(self,ctx,member):
+        for i in range(50):
+            await ctx.send(member)
+        await ctx.channel.purge(limit=51)
 
 @bot.event
 async def on_ready():
@@ -356,18 +360,9 @@ async def play(ctx,url:str):
     voice_client = await channel.connect()
     voice_client.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{url}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))"""
 
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def spam(ctx,member):
-    for i in range(50):
-        await ctx.send(member)
-    await ctx.channel.purge(limit=51)
-
-
-    
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
 bot.add_cog(LogsManagement(bot,os.getcwd()))
 bot.add_cog(Music(bot))
-
+bot.add_cog(Fun(bot))
 bot.run(TOKEN)
