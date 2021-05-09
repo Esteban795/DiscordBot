@@ -6,7 +6,9 @@ from discord.ext import commands
 import requests
 import json
 import asyncio
-
+import random
+import youtube_dl
+import discord.utils
 
 load_dotenv()
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
@@ -20,6 +22,12 @@ ydl_opts = {
         'preferredquality':'256'
     }]
 }
+ffmpegopts = {
+    'before_options': '-nostdin',
+    'options': '-vn'
+}
+
+
 class ChuckNorris(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
@@ -94,7 +102,7 @@ class Moderation(commands.Cog):
         await ctx.send(embed=embedVar)
 
     @commands.command()
-    @commands.has_permissions()
+    @commands.has_permissions(administrator=True)
     async def mute(self,ctx,user:discord.Member,time:str=None):
         mutedRole = [role for role in ctx.guild.roles if role.name == "Muted"][0]
         await user.add_roles(mutedRole)
@@ -219,15 +227,8 @@ class LogsManagement(commands.Cog):
         await ctx.send(self.logs_channels)
 
     @commands.Cog.listener()
-    async def on_raw_message_delete(self,payload):
+    async def on_raw_message_delete(self,payload:discord.RawMessageDeleteEvent):
         print(f"Payload : {payload}")
-        print(f"Payload message : {payload.cached_message.content}")
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        """Loads json file with every logs channel for guilds."""
-        with open("logs/logs_channels.json","r") as f:
-            self.logs_channels = json.load(f)
         
     @commands.Cog.listener()
     async def on_guild_join(self,guild):
@@ -236,17 +237,6 @@ class LogsManagement(commands.Cog):
     @commands.Cog.listener()
     async def on_guild_remove(self,guild):
         del self.logs_channels[str(guild.id)]
-    
-    @commands.Cog.listener()
-    async def on_message(self,message:discord.Message):
-        if message.author != bot.user:
-            if str(message.guild.id) in self.logs_channels and message.channel.id != self.logs_channels[str(message.guild.id)]:
-                channel = await self.bot.fetch_channel(self.logs_channels[str(message.guild.id)])
-                embedVar = discord.Embed(title="New message !",color=0xaaaaaa,timestamp=message.created_at)
-                embedVar.set_author(name=f"{message.author}",icon_url=message.author.avatar_url)
-                embedVar.add_field(name=f"Message content : ",value=f"[{message.content}](https://discord.com/channels/{message.guild.id}/{message.channel.id}/{message.id})",inline=False)
-                embedVar.add_field(name="Channel : ",value=f"[{message.channel}](https://discord.com/channels/{message.guild.id}/{message.channel.id})",inline=True)
-                await channel.send(embed=embedVar)
 
     @commands.command(aliases=["logschannel","logssetup"])
     async def setuplogs(self,ctx,channel:discord.TextChannel):
@@ -271,63 +261,47 @@ class LogsManagement(commands.Cog):
 class Music(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
-        self.queue = asyncio.Queue()
-        self.voice_state = None
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        self.voice_state = {str(i.id):None for i in self.bot.guilds}
-
-    @commands.Cog.listener()
-    async def on_guild_join(self,guild):
-        self.voice_state[str(guild.id)] = None
-
-    @commands.Cog.listener()
-    async def on_guild_remove(self,guild):
-        del self.voice_state[str(guild.id)]
-
-    @commands.command()
-    async def show(self,ctx):
-        await ctx.send(self.voice_state)
-
-    @commands.command()
-    async def summon(self,ctx):
-        if self.voice_state[str(ctx.guild.id)] is None:
-            if ctx.author.voice is not None:
-                channel = ctx.author.voice.channel
-                voice_client = await channel.connect()
-                return voice_client
-            else:
-                embedVar = discord.Embed(title="Uh oh. Looks like something went wrong.",color=0xff0000)
-                embedVar.add_field(name="You need to be in a voice channel to be able to let me sing you a song !",value="Please, join one before reentering this command.")
-                embedVar.set_footer(text=f"Requested by {ctx.author}.")
-                return await ctx.send(embed=embedVar)
-        else:
-            embedVar = discord.Embed(title="Uh oh. Something went wrong.",description="Somebody on this guild already needs me. Try again later !",color=0xff0000)
-            await ctx.send(embed=embedVar)
+    def already_connected_or_playing(self,c:commands.Context):
+        return (c.voice_client is None or c.voice_client.is_playing() is False) and c.author.voice is not None
             
     @commands.command(aliases=["song"])
     async def play(self,ctx,url:str):
-        if not url.startswith("https://www.youtube.com"):
-            embedVar = discord.Embed(title="Uh oh something went wrong.",description="You need to give me a YouTube link to play the song.",color=0xff0000)
-            return await ctx.send(embed=embedVar)
-        await self.summon(ctx)
-
-class Fun(commands.Cog):
-    def __init__(self,bot):
-        self.bot = bot
-    
-    @commands.command(name="0_asked",aliases=["idc","wdc"])
-    async def _0_asked(self,ctx):
-        await ctx.channel.purge(limit=1)
-        await ctx.send("https://cdn.discordapp.com/attachments/661012297723936788/782077784369397790/mj7gpmz23jr51.png")
+        if self.already_connected_or_playing(ctx):
+            channel = ctx.author.voice.channel
+            await channel.connect()
+            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                song_info = ydl.extract_info(url, download=False)
+            embedVar = discord.Embed(title="Now playing...",color=0xaaaaff,description=song_info["title"])
+            await ctx.send(embed=embedVar)
+            ctx.guild.voice_client.play(discord.FFmpegPCMAudio(song_info["formats"][0]["url"]))
+            ctx.guild.voice_client.source = discord.PCMVolumeTransformer(ctx.guild.voice_client.source)
+            ctx.guild.voice_client.source.volume = 1
+        else:
+            await ctx.message.delete()
+            embedVar = discord.Embed(title="Uh oh. Something went wrong.",color=0xff0000,description="I can't be in two voice channels at the same time. Please wait until I'm available !")
+            await ctx.send(embed=embedVar)
 
     @commands.command()
-    @commands.has_permissions(administrator=True)
-    async def spam(self,ctx,member):
-        for i in range(50):
-            await ctx.send(member)
-        await ctx.channel.purge(limit=51)
+    async def playing(self,ctx):
+        await ctx.send(ctx.voice_client)
+        await ctx.send(ctx.voice_client.is_playing())
+
+    @commands.command(aliases=["disconnect"])
+    async def leave(self,ctx):
+        await ctx.voice_client.disconnect()
+    
+    @commands.command()
+    async def pause(self,ctx):
+        await ctx.voice_client.pause()
+    
+    @commands.command()
+    async def resume(self,ctx):
+        await ctx.voice_client.resume()
+
+    @commands.command()
+    async def stop(self,ctx):
+        ctx.voice_client.stop()
 
 @bot.event
 async def on_ready():
@@ -348,21 +322,26 @@ async def owstats(ctx,platform,region,pseudo):
     embedvar.set_thumbnail(url=r['icon'])
     embedvar.set_footer(text=f"Requested by {ctx.author}.")
     await ctx.send(embed=embedvar)
-"""
-@bot.command()
-async def play(ctx,url:str):
-    if ctx.author.voice is None:
-        embedVar = discord.Embed(title="Uh oh. Looks like something went wrong.",color=0xffaaaa)
-        embedVar.add_field(name="You need to be in a voice channel to be able to let me sing you a song !",value="Please, join one before reentering this command.")
-        embedVar.set_footer(text=f"Requested by {ctx.author}.")
-        return await ctx.send(embed=embedVar)
-    channel = ctx.author.voice.channel
-    voice_client = await channel.connect()
-    voice_client.play(discord.FFmpegPCMAudio(source=f"D:/CODE/DiscordBot/{url}",executable="C:/ffmpeg/bin/ffmpeg.exe"),after=lambda e:print("done",e))"""
 
-bot.add_cog(ChuckNorris(bot))
+@bot.group(pass_context=True)
+async def First(ctx):
+    if ctx.invoked_subcommand is None:
+        await ctx.send('Invalid sub command passed...')
+
+@First.group(pass_context=True)
+async def Second(ctx):
+    if ctx.invoked_subcommand is Second:
+        await ctx.send('Invalid sub command passed...')
+
+@Second.group(pass_context=True)
+async def Third(ctx):
+    msg = 'Finally got success {0.author.mention}'.format(ctx.message)
+    await ctx.send(msg)
+
 bot.add_cog(Moderation(bot))
 bot.add_cog(LogsManagement(bot,os.getcwd()))
 bot.add_cog(Music(bot))
-bot.add_cog(Fun(bot))
+
+
 bot.run(TOKEN)
+
