@@ -8,7 +8,7 @@ import json
 import asyncio
 import random
 import youtube_dl
-import discord.utils
+import aiosqlite
 
 load_dotenv()
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
@@ -67,12 +67,12 @@ class Moderation(commands.Cog):
     @commands.Cog.listener()
     async def on_guild_join(self,guild:discord.Guild):
         """Create the role muted as soon as the bot joins the guild, if no muted role exists. Disable send messages permissions and speak permissions for muted role in every channel"""
-        if "muted"  in guild.roles or "Muted" in guild.roles:
-            return
-        else:
-            mutedRole = await guild.create_role(name="Muted",permissions=discord.Permissions(send_messages=False,speak=False))
-            for channel in guild.channels:
-                await channel.set_permissions(mutedRole, send_messages = False, speak = False)
+        for role in guild.roles:
+            if role.name.lower() == "muted":
+                return
+        mutedRole = await guild.create_role(name="Muted",permissions=discord.Permissions(send_messages=False,speak=False))
+        for channel in guild.channels:
+            await channel.set_permissions(mutedRole, send_messages = False, speak = False)
     
     @commands.command(aliases=["addrole","roleadd"])
     @commands.has_permissions(manage_roles=True)
@@ -213,51 +213,6 @@ class Moderation(commands.Cog):
     async def purge(self,ctx,Amount:int=2): #Delete "Amount" messages from the current channel. $purge [int]
         await ctx.channel.purge(limit=Amount + 1)
 
-    
-
-class LogsManagement(commands.Cog):
-    def __init__(self,bot,path):
-        self.bot = bot
-        self.path = path
-        self.logs_channels = None
-
-    @commands.command()
-    @commands.is_owner()
-    async def showlogschannels(self,ctx):
-        await ctx.send(self.logs_channels)
-
-    @commands.Cog.listener()
-    async def on_raw_message_delete(self,payload:discord.RawMessageDeleteEvent):
-        print(f"Payload : {payload}")
-        
-    @commands.Cog.listener()
-    async def on_guild_join(self,guild):
-        self.logs_channels[str(guild.id)] = None
-
-    @commands.Cog.listener()
-    async def on_guild_remove(self,guild):
-        del self.logs_channels[str(guild.id)]
-
-    @commands.command(aliases=["logschannel","logssetup"])
-    async def setuplogs(self,ctx,channel:discord.TextChannel):
-        self.logs_channels[str(ctx.guild.id)] = channel.id
-        with open("logs/logs_channels.json","w") as f:
-            json.dump(self.logs_channels,f,indent=4)
-        embedVar = discord.Embed(title=f"{ctx.author} selected this channel to be the logs channel.",color=0xaaaaff)
-        embedVar.add_field(name="I will send here everything that happens on your server, so you can keep track of what is going on.",
-        value="Messages sent in this channel obviously won't be shown.")
-        embedVar.set_footer(text="Want to change the logs channel ? Type '$setuplogs [channel]' !")
-        await channel.send(embed=embedVar)
-    
-    @commands.command(aliases=["rmvlogschannel"])
-    async def removelogschannel(self,ctx):
-        channel = await bot.fetch_channel(self.logs_channels[str(ctx.guild.id)])
-        embedVar = discord.Embed(title=f"{ctx.author} chose to not have logs in {channel}.",description="You can always add a log channel later by typing '$setuplogs [channel]' !",color=0x00ff00)
-        del self.logs_channels[str(ctx.guild.id)]
-        with open("logs/logs_channels.json","w") as f:
-            json.dump(self.logs_channels,f)
-        await channel.send(embed=embedVar)
-
 class Music(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
@@ -303,6 +258,37 @@ class Music(commands.Cog):
     async def stop(self,ctx):
         ctx.voice_client.stop()
 
+class Tags(commands.Cog):
+    def __init__(self,bot):
+        self.bot = bot
+    
+    @commands.group(pass_context=True)
+    async def First(self,ctx,*,text):
+        if ctx.invoked_subcommand is None:
+            print(text)
+            async with aiosqlite.connect("bot.db") as db:
+                async with db.execute(f"SELECT text FROM tags WHERE call = {text}") as cursor:
+                    await ctx.send(cursor)
+                
+
+
+    @First.group(pass_context=True)
+    async def Second(self,ctx):
+        if ctx.invoked_subcommand is None:
+            await ctx.send('Invalid sub command passed...')
+
+    @Second.group(pass_context=True)
+    async def Third(self,ctx):
+        msg = 'Finally got success {0.author.mention}'.format(ctx.message)
+        await ctx.send(msg)
+
+
+@bot.command()
+async def tagtest(ctx):
+    async with aiosqlite.connect("bot.db") as db:
+        async with db.execute(f"SELECT * FROM tags") as r:
+            print(r)
+
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
@@ -322,7 +308,8 @@ async def owstats(ctx,platform,region,pseudo):
     embedvar.set_thumbnail(url=r['icon'])
     embedvar.set_footer(text=f"Requested by {ctx.author}.")
     await ctx.send(embed=embedvar)
-
+    
+"""
 @bot.group(pass_context=True)
 async def First(ctx):
     if ctx.invoked_subcommand is None:
@@ -336,12 +323,13 @@ async def Second(ctx):
 @Second.group(pass_context=True)
 async def Third(ctx):
     msg = 'Finally got success {0.author.mention}'.format(ctx.message)
-    await ctx.send(msg)
+    await ctx.send(msg)"""
+
+
+
 
 bot.add_cog(Moderation(bot))
-bot.add_cog(LogsManagement(bot,os.getcwd()))
 bot.add_cog(Music(bot))
-
-
+bot.add_cog(Tags(bot))
 bot.run(TOKEN)
 
