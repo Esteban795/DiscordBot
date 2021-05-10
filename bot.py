@@ -258,37 +258,50 @@ class Music(commands.Cog):
     async def stop(self,ctx):
         ctx.voice_client.stop()
 
+
 class Tags(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
     
-    @commands.group(pass_context=True)
-    async def First(self,ctx,*,text):
+    @commands.Cog.listener()
+    async def on_guild_join(self,guild:discord.Guild):
+        async with aiosqlite.connect("databases/tags.db") as db:
+            await db.execute(f"CREATE TABLE IF NOT EXISTS _{str(guild.id)}(tag_name TEXT,description TEXT);")
+            await db.commit()
+    
+    @commands.Cog.listener()
+    async def on_guild_remove(self,guild):
+        pass
+    
+    @commands.group(invoke_without_command=True)
+    async def tag(self,ctx,*,tag_name):
         if ctx.invoked_subcommand is None:
-            print(text)
-            async with aiosqlite.connect("bot.db") as db:
-                async with db.execute(f"SELECT text FROM tags WHERE call = {text}") as cursor:
-                    await ctx.send(cursor)
-                
+            async with aiosqlite.connect("databases/tags.db") as db:
+                async with db.execute(f"SELECT description FROM _{str(ctx.guild.id)} WHERE tag_name = '{tag_name}';") as cursor:
+                    async for row in cursor:
+                        await ctx.send(row[0])
 
+    @tag.command()
+    async def add(self,ctx,tag_name,*,description):
+        async with aiosqlite.connect("databases/tags.db") as db:
+            await db.execute(f"INSERT INTO _{str(ctx.guild.id)} VALUES('{tag_name}','{description}')")
+            await db.commit()
+            await ctx.send(f"Successfully added '{tag_name}' tag.")
+    
+    @tag.command()
+    async def edit(self,ctx,tag_name,*,description):
+        guild_id = f"_{str(ctx.guild.id)}"
+        async with aiosqlite.connect("databases/tags.db") as db:
+            await db.execute(f"UPDATE {guild_id} SET description = REPLACE(description,(SELECT description FROM {guild_id} WHERE tag_name = '{tag_name}'),'{description}')")
+            await db.commit()
+            await ctx.send(f"Succesfully edited '{tag_name}' tag.")
 
-    @First.group(pass_context=True)
-    async def Second(self,ctx):
-        if ctx.invoked_subcommand is None:
-            await ctx.send('Invalid sub command passed...')
-
-    @Second.group(pass_context=True)
-    async def Third(self,ctx):
-        msg = 'Finally got success {0.author.mention}'.format(ctx.message)
-        await ctx.send(msg)
-
-
-@bot.command()
-async def tagtest(ctx):
-    async with aiosqlite.connect("bot.db") as db:
-        async with db.execute(f"SELECT * FROM tags") as cursor:
-            async for row in cursor:
-                await ctx.send(row)
+    @tag.command()
+    async def remove(self,ctx,*,tag_name):
+        async with aiosqlite.connect("databases/tags.db") as db:
+            await db.execute(f"DELETE FROM _{str(ctx.guild.id)} WHERE tag_name = '{tag_name}';")
+            await db.commit()
+            await ctx.send(f"Successfully removed {tag_name} tag.")
 
 @bot.event
 async def on_ready():
@@ -315,12 +328,10 @@ async def owstats(ctx,platform,region,pseudo):
 async def First(ctx):
     if ctx.invoked_subcommand is None:
         await ctx.send('Invalid sub command passed...')
-
 @First.group(pass_context=True)
 async def Second(ctx):
     if ctx.invoked_subcommand is Second:
         await ctx.send('Invalid sub command passed...')
-
 @Second.group(pass_context=True)
 async def Third(ctx):
     msg = 'Finally got success {0.author.mention}'.format(ctx.message)
@@ -333,4 +344,3 @@ bot.add_cog(Moderation(bot))
 bot.add_cog(Music(bot))
 bot.add_cog(Tags(bot))
 bot.run(TOKEN)
-
