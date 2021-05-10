@@ -286,8 +286,9 @@ class Tags(commands.Cog):
 @bot.command()
 async def tagtest(ctx):
     async with aiosqlite.connect("bot.db") as db:
-        async with db.execute(f"SELECT * FROM tags") as r:
-            print(r)
+        async with db.execute(f"SELECT * FROM tags") as cursor:
+            async for row in cursor:
+                await ctx.send(row)
 
 @bot.event
 async def on_ready():
@@ -308,7 +309,7 @@ async def owstats(ctx,platform,region,pseudo):
     embedvar.set_thumbnail(url=r['icon'])
     embedvar.set_footer(text=f"Requested by {ctx.author}.")
     await ctx.send(embed=embedvar)
-    
+
 """
 @bot.group(pass_context=True)
 async def First(ctx):
