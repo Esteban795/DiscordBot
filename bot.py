@@ -1,14 +1,12 @@
 from dotenv import load_dotenv
-from datetime import datetime
 import discord
 import os
 from discord.ext import commands
 import requests
-import json
 import asyncio
-import random
 import youtube_dl
 import aiosqlite
+from test import *
 
 load_dotenv()
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
@@ -32,7 +30,7 @@ class ChuckNorris(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
 
-    @commands.command(aliases=["ck","kc"])
+    @commands.command(aliases=["cn","nc"])
     async def chucknorris(self,ctx,*args):#chuck norris joke will be send to the channel
         l = len(args)
         try:
@@ -53,8 +51,8 @@ class ChuckNorris(commands.Cog):
             embedVar.set_footer(text="Pshhh. If you have no clue what categories are available, type '$ckcategories' !")
             await ctx.send(embed=embedVar)
     
-    @commands.command(aliases=["ckcat","ckc","ckcategoires"])
-    async def ckcategories(self,ctx):
+    @commands.command(aliases=["cncat","cnc","cncategoires"])
+    async def cncategories(self,ctx):
         embedVar = discord.Embed(title="The categories of joke the bot can tell you.",color=0xaaffaa)
         r = requests.get("https://api.chucknorris.io/jokes/categories")
         embedVar.add_field(name="Pick your favourite ! ",value="\n".join(["• {}".format(i) for i in r.json()]))
@@ -102,7 +100,7 @@ class Moderation(commands.Cog):
         await ctx.send(embed=embedVar)
 
     @commands.command()
-    @commands.has_permissions(administrator=True)
+    @commands.has_permissions()
     async def mute(self,ctx,user:discord.Member,time:str=None):
         mutedRole = [role for role in ctx.guild.roles if role.name == "Muted"][0]
         await user.add_roles(mutedRole)
@@ -299,17 +297,13 @@ class Tags(commands.Cog):
     @tag.command()
     async def remove(self,ctx,*,tag_name):
         async with aiosqlite.connect("databases/tags.db") as db:
-            await db.execute(f"DELETE FROM _{str(ctx.guild.id)} WHERE tag_name = '{tag_name}';")
+            await db.execute(f"DELETE FROM _{str(ctx.guild.id)} WHERE tag_name = '{tag_name}';")                     
             await db.commit()
             await ctx.send(f"Successfully removed {tag_name} tag.")
 
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
-
-@bot.command()
-async def echo(ctx, *args): #Repeat whatever you say
-    await ctx.send(" ".join(args))
 
 @bot.command()
 async def owstats(ctx,platform,region,pseudo):
@@ -323,23 +317,7 @@ async def owstats(ctx,platform,region,pseudo):
     embedvar.set_footer(text=f"Requested by {ctx.author}.")
     await ctx.send(embed=embedvar)
 
-"""
-@bot.group(pass_context=True)
-async def First(ctx):
-    if ctx.invoked_subcommand is None:
-        await ctx.send('Invalid sub command passed...')
-@First.group(pass_context=True)
-async def Second(ctx):
-    if ctx.invoked_subcommand is Second:
-        await ctx.send('Invalid sub command passed...')
-@Second.group(pass_context=True)
-async def Third(ctx):
-    msg = 'Finally got success {0.author.mention}'.format(ctx.message)
-    await ctx.send(msg)"""
-
-
-
-
+bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
 bot.add_cog(Music(bot))
 bot.add_cog(Tags(bot))
