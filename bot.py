@@ -1,13 +1,14 @@
+from discord.ext.commands import errors
 from dotenv import load_dotenv
 import discord
 import os
 from discord.ext import commands
+from dotenv.main import dotenv_values
 import requests
 import asyncio
 import youtube_dl
 import aiosqlite
-from test import *
-
+from difflib import get_close_matches
 load_dotenv()
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
@@ -74,39 +75,39 @@ class Moderation(commands.Cog):
     
     @commands.command(aliases=["addrole","roleadd"])
     @commands.has_permissions(manage_roles=True)
-    async def giverole(self,ctx,user:discord.Member,role:discord.Role):
-        await user.add_roles(role)
-        embedVar = discord.Embed(description=f"{user} was granted the {role} role.",color=0xaaffaa)
+    async def giverole(self,ctx,member:discord.Member,role:discord.Role):
+        await member.add_roles(role)
+        embedVar = discord.Embed(description=f"{member} was granted the {role} role.",color=0xaaffaa)
         embedVar.set_footer(text=f"Requested by {ctx.author}.")
         await ctx.send(embed=embedVar)
 
     @commands.command(aliases=["rmvrole"])
     @commands.has_permissions(manage_roles = True)
-    async def removerole(self,ctx,user : discord.Member, role:discord.Role): # $removerole [member] [role]
-        await user.remove_roles(role)
-        embedVar = discord.Embed(description=f"{user} lost the {role} role.",color=0xaaffaa)
+    async def removerole(self,ctx,member : discord.Member, role:discord.Role): # $removerole [member] [role]
+        await member.remove_roles(role)
+        embedVar = discord.Embed(description=f"{member} lost the {role} role.",color=0xaaffaa)
         embedVar.set_footer(text=f"Requested by {ctx.author}.")
         await ctx.send(embed=embedVar)
 
     @commands.command(aliases=["gtfo"])
     @commands.has_permissions(kick_members = True)
-    async def kick(self,ctx, user: discord.Member, *,reason="Not specified."): # $kick [member] [reason]
+    async def kick(self,ctx, member: discord.Member, *,reason="Not specified."): # $kick [member] [reason]
         PMembed = discord.Embed(title="Uh oh. Looks like you did something quite bad !",color=0xff0000)
         PMembed.add_field(name=f"You were kicked from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
-        await user.send(embed=PMembed)
-        await user.kick(reason=reason)
-        embedVar = discord.Embed(description=f"{user} was successfully kicked from the server.",color=0xaaffaa)
+        await member.send(embed=PMembed)
+        await member.kick(reason=reason)
+        embedVar = discord.Embed(description=f"{member} was successfully kicked from the server.",color=0xaaffaa)
         embedVar.set_footer(text=f"Requested by {ctx.author}.")
         await ctx.send(embed=embedVar)
 
     @commands.command()
     @commands.has_permissions()
-    async def mute(self,ctx,user:discord.Member,time:str=None):
+    async def mute(self,ctx,member:discord.Member,time:str=None):
         mutedRole = [role for role in ctx.guild.roles if role.name == "Muted"][0]
-        await user.add_roles(mutedRole)
+        await member.add_roles(mutedRole)
         if time is not None:
             await asyncio.sleep(int(time))
-            await user.remove_roles(mutedRole)
+            await member.remove_roles(mutedRole)
     
     @commands.command(aliases=["demute"])
     @commands.has_permissions()
@@ -131,15 +132,15 @@ class Moderation(commands.Cog):
 
     @commands.command(aliases=["b","bna"])
     @commands.has_permissions(ban_members = True)
-    async def ban(self,ctx,user : discord.Member,time:str=None, *,reason="Not specified."): # $ban [user] [reason]
+    async def ban(self,ctx,member : discord.Member,time:str=None, *,reason="Not specified."): # $ban [member] [reason]
         embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
         embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
         embedVar.set_footer(text=f"Requested by {ctx.author}.")
-        await user.send(embed=embedVar)
-        await user.ban(reason=reason)
+        await member.send(embed=embedVar)
+        await member.ban(reason=reason)
         if time is not None:
             await asyncio.sleep(int(time))
-            await ctx.guild.unban(user,reason="Ban duration is over.")
+            await ctx.guild.unban(member,reason="Ban duration is over.")
 
     @commands.command(aliases=["u","unbna"])
     @commands.has_permissions(ban_members = True)
@@ -269,16 +270,28 @@ class Tags(commands.Cog):
     
     @commands.Cog.listener()
     async def on_guild_remove(self,guild):
-        pass
+        async with aiosqlite.connect("databases/tags.db") as db:
+            await db.execute(f"DROP TABLE _{str(guild.id)};")
+            await db.commit()
     
     @commands.group(invoke_without_command=True)
     async def tag(self,ctx,*,tag_name):
+        guild_id = f"_{str(ctx.guild.id)}"
         if ctx.invoked_subcommand is None:
             async with aiosqlite.connect("databases/tags.db") as db:
-                async with db.execute(f"SELECT description FROM _{str(ctx.guild.id)} WHERE tag_name = '{tag_name}';") as cursor:
-                    async for row in cursor:
-                        await ctx.send(row[0])
-
+                async with db.execute(f"SELECT description FROM {guild_id} WHERE tag_name = '{tag_name}';") as cursor:
+                    desc = await cursor.fetchone()
+                    if desc is not None:
+                        await ctx.send(desc[0])
+                    else:
+                        tag_names_availables = await db.execute(f"SELECT tag_name FROM {guild_id}")
+                        fetched_tag_names = [i[0] for i in await tag_names_availables.fetchall()]
+                        matches = "\n".join(get_close_matches(tag_name,fetched_tag_names,n=3))
+                        if len(matches) == 0:
+                            return await ctx.send(f"I couldn't find anything close enough to '{tag_name}'. Try something else.")
+                        else:
+                            return await ctx.send(f"Tag '{tag_name}' not found. Maybe you meant :\n{matches}")
+                            
     @tag.command()
     async def add(self,ctx,tag_name,*,description):
         async with aiosqlite.connect("databases/tags.db") as db:
@@ -301,24 +314,35 @@ class Tags(commands.Cog):
             await db.commit()
             await ctx.send(f"Successfully removed {tag_name} tag.")
 
+class ErrorHandler(commands.Cog):
+    def __init__(self,bot):
+        self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_command_error(self,ctx, error):
+        if isinstance(error, commands.CommandNotFound):
+            cmd = ctx.invoked_with
+            cmds = [cmd.name for cmd in bot.commands]
+            matches = "\n".join(get_close_matches(cmd, cmds,n=3))
+            if len(matches) > 0:
+                await ctx.send(f"Command \"{cmd}\" not found. Maybe you meant :\n{matches}")
+            else:
+                await ctx.send(f'Command "{cmd}" not found, use the help command to know what commands are available')
+        elif isinstance(error,commands.MissingPermissions):
+            await ctx.send(error)
+        elif isinstance(error,commands.MissingRequiredArgument):
+            await ctx.send(error)
+        
+
+
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
-
-@bot.command()
-async def owstats(ctx,platform,region,pseudo):
-    p = '-'.join(pseudo.split('#'))
-    r = requests.get(f"https://ow-api.com/v1/stats/{platform}/{region}/{p}/profile").json()
-    await ctx.send(r)
-    level = 100 * r["prestige"] +r["level"]
-    embedvar = discord.Embed(title=f"{pseudo}'s statistics !",color=0xaaffaa)
-    embedvar.add_field(name="Basic informations : ",value=f"• Level : {level}. \n • Endorsement level : {r['endorsement']}. \n • Carrier : {'private.' if r['private'] is True else 'public.'}")
-    embedvar.set_thumbnail(url=r['icon'])
-    embedvar.set_footer(text=f"Requested by {ctx.author}.")
-    await ctx.send(embed=embedvar)
 
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
 bot.add_cog(Music(bot))
 bot.add_cog(Tags(bot))
+bot.add_cog(ErrorHandler(bot))
+
 bot.run(TOKEN)
