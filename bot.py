@@ -9,6 +9,7 @@ import asyncio
 import youtube_dl
 import aiosqlite
 from difflib import get_close_matches
+
 load_dotenv()
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
@@ -236,11 +237,6 @@ class Music(commands.Cog):
             embedVar = discord.Embed(title="Uh oh. Something went wrong.",color=0xff0000,description="I can't be in two voice channels at the same time. Please wait until I'm available !")
             await ctx.send(embed=embedVar)
 
-    @commands.command()
-    async def playing(self,ctx):
-        await ctx.send(ctx.voice_client)
-        await ctx.send(ctx.voice_client.is_playing())
-
     @commands.command(aliases=["disconnect"])
     async def leave(self,ctx):
         await ctx.voice_client.disconnect()
@@ -294,25 +290,42 @@ class Tags(commands.Cog):
                             
     @tag.command()
     async def add(self,ctx,tag_name,*,description):
+        guild_id = f"_{str(ctx.guild.id)}"
         async with aiosqlite.connect("databases/tags.db") as db:
-            await db.execute(f"INSERT INTO _{str(ctx.guild.id)} VALUES('{tag_name}','{description}')")
-            await db.commit()
-            await ctx.send(f"Successfully added '{tag_name}' tag.")
+            async with db.execute(f"SELECT description FROM {guild_id} WHERE tag_name = '{tag_name}';") as cursor:
+                desc = await cursor.fetchone()
+            if desc is not None:
+                await ctx.send(f"Tag '{tag_name}' already exists in the database. Please pick another tag name !")
+            else:
+                await db.execute(f"INSERT INTO _{str(ctx.guild.id)} VALUES('{tag_name}','{description}')")
+                await db.commit()
+                await ctx.send(f"Successfully added '{tag_name}' tag.")
     
     @tag.command()
     async def edit(self,ctx,tag_name,*,description):
         guild_id = f"_{str(ctx.guild.id)}"
         async with aiosqlite.connect("databases/tags.db") as db:
-            await db.execute(f"UPDATE {guild_id} SET description = REPLACE(description,(SELECT description FROM {guild_id} WHERE tag_name = '{tag_name}'),'{description}')")
-            await db.commit()
-            await ctx.send(f"Succesfully edited '{tag_name}' tag.")
+            async with db.execute(f"SELECT description FROM {guild_id} WHERE tag_name = '{tag_name}';") as cursor:
+                desc = await cursor.fetchone()
+            if desc is None:
+                await ctx.send(f"No tag named '{tag_name}', so you can't edit it. Please create it first.")
+            else:
+                await db.execute(f"UPDATE {guild_id} SET description = REPLACE(description,(SELECT description FROM {guild_id} WHERE tag_name = '{tag_name}'),'{description}')")
+                await db.commit()
+                await ctx.send(f"Succesfully edited '{tag_name}' tag.")
 
     @tag.command()
     async def remove(self,ctx,*,tag_name):
+        guild_id = f"_{str(ctx.guild.id)}"
         async with aiosqlite.connect("databases/tags.db") as db:
-            await db.execute(f"DELETE FROM _{str(ctx.guild.id)} WHERE tag_name = '{tag_name}';")                     
-            await db.commit()
-            await ctx.send(f"Successfully removed {tag_name} tag.")
+            async with db.execute(f"SELECT description FROM {guild_id} WHERE tag_name = '{tag_name}';") as cursor:
+                desc = await cursor.fetchone()
+            if desc is None:
+                await ctx.send(f"No tag named '{tag_name}', so you can't remove it.")
+            else:
+                await db.execute(f"DELETE FROM _{str(ctx.guild.id)} WHERE tag_name = '{tag_name}';")                     
+                await db.commit()
+                await ctx.send(f"Successfully removed '{tag_name}' tag.")
 
 class ErrorHandler(commands.Cog):
     def __init__(self,bot):
