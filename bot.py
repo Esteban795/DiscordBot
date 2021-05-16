@@ -1,9 +1,8 @@
-from discord.ext.commands import errors
+from discord import colour
 from dotenv import load_dotenv
 import discord
 import os
 from discord.ext import commands
-from dotenv.main import dotenv_values
 import requests
 import asyncio
 import youtube_dl
@@ -338,16 +337,29 @@ class ErrorHandler(commands.Cog):
             cmds = [cmd.name for cmd in bot.commands]
             matches = "\n".join(get_close_matches(cmd, cmds,n=3))
             if len(matches) > 0:
-                await ctx.send(f"Command \"{cmd}\" not found. Maybe you meant :\n{matches}")
+                return await ctx.send(f"Command \"{cmd}\" not found. Maybe you meant :\n{matches}")
             else:
-                await ctx.send(f'Command "{cmd}" not found, use the help command to know what commands are available')
+                return await ctx.send(f'Command "{cmd}" not found, use the help command to know what commands are available')
         elif isinstance(error,commands.MissingPermissions):
-            await ctx.send(error)
+            return await ctx.send(error)
         elif isinstance(error,commands.MissingRequiredArgument):
-            await ctx.send(error)
+            return await ctx.send(error)
+        elif isinstance(error,commands.NotOwner):
+            await ctx.send("raté")
+        else:
+            raise error
         
+@bot.command()
+async def poll(ctx,*args):
+    emote_alphabet = ["\U0001F1E6","\U0001F1E7","\U0001F1E8","\U0001F1E9","\U0001F1EA","\U0001F1EB","\U0001F1EC","\U0001F1ED","\U0001F1EE","\U0001F1EF","\U0001F1F0","\U0001F1F1","\U0001F1F2","\U0001F1F3","\U0001F1F4",
+    "\U0001F1F5","\U0001F1F6","\U0001F1F7","\U0001F1F8","\U0001F1F9","\U0001F1FA","\U0001F1FB","\U0001F1FC","\U0001F1FD","\U0001F1FE","\U0001F1FF"]
+    question = args[0]
+    choices = "\n".join([f'{emote_alphabet[i]}  {args[i + 1]}' for i in range(len(args) - 1)])
+    embed_poll = discord.Embed(title=question,description=choices,color=0xaaaaaa)
+    message = await ctx.send(embed=embed_poll)
+    print(message)
 
-
+    
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
