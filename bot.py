@@ -1,4 +1,5 @@
 from discord import colour
+from discord.errors import Forbidden
 from dotenv import load_dotenv
 import discord
 import os
@@ -352,14 +353,19 @@ class ErrorHandler(commands.Cog):
 @bot.command()
 async def poll(ctx,*args):
     emote_alphabet = ["\U0001F1E6","\U0001F1E7","\U0001F1E8","\U0001F1E9","\U0001F1EA","\U0001F1EB","\U0001F1EC","\U0001F1ED","\U0001F1EE","\U0001F1EF","\U0001F1F0","\U0001F1F1","\U0001F1F2","\U0001F1F3","\U0001F1F4",
-    "\U0001F1F5","\U0001F1F6","\U0001F1F7","\U0001F1F8","\U0001F1F9","\U0001F1FA","\U0001F1FB","\U0001F1FC","\U0001F1FD","\U0001F1FE","\U0001F1FF"]
+    "\U0001F1F5","\U0001F1F6","\U0001F1F7","\U0001F1F8","\U0001F1F9"]
     question = args[0]
-    choices = "\n".join([f'{emote_alphabet[i]}  {args[i + 1]}' for i in range(len(args) - 1)])
-    embed_poll = discord.Embed(title=question,description=choices,color=0xaaaaaa)
-    message = await ctx.send(embed=embed_poll)
-    print(message)
+    try:
+        choices = "\n".join([f'{emote_alphabet[i]}  {args[i + 1]}' for i in range(len(args) - 1)])
+        embed_poll = discord.Embed(title=question,description=choices,color=0xaaaaaa)
+        embed_poll.set_footer(text=f"Requested by {ctx.author}.")
+        message = await ctx.send(embed=embed_poll)
+        for i in range(len(args) - 1):
+            await message.add_reaction(emote_alphabet[i])
+    except IndexError or Forbidden:
+        await ctx.send("Discord doesn't allow me to react with more than 20 emojis. So you can't have more than 20 choices for your poll.")
 
-    
+
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
