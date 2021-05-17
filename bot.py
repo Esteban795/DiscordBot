@@ -1,5 +1,7 @@
 from discord import colour
 from discord.errors import Forbidden
+from discord.ext.commands.core import command
+from discord.ext.commands.errors import MissingRequiredArgument
 from dotenv import load_dotenv
 import discord
 import os
@@ -346,26 +348,74 @@ class ErrorHandler(commands.Cog):
         elif isinstance(error,commands.MissingRequiredArgument):
             return await ctx.send(error)
         elif isinstance(error,commands.NotOwner):
-            await ctx.send("raté")
+            await ctx.send("You must be the owner of this bot to perform this command. Please contact Esteban#7985 for more informations.")
         else:
             raise error
-        
-@bot.command()
-async def poll(ctx,*args):
-    emote_alphabet = ["\U0001F1E6","\U0001F1E7","\U0001F1E8","\U0001F1E9","\U0001F1EA","\U0001F1EB","\U0001F1EC","\U0001F1ED","\U0001F1EE","\U0001F1EF","\U0001F1F0","\U0001F1F1","\U0001F1F2","\U0001F1F3","\U0001F1F4",
+
+class Poll(commands.Cog):
+    def __init__(self,bot):
+        self.bot = bot
+        self.emote_alphabet = ["\U0001F1E6","\U0001F1E7","\U0001F1E8","\U0001F1E9","\U0001F1EA","\U0001F1EB","\U0001F1EC","\U0001F1ED","\U0001F1EE","\U0001F1EF","\U0001F1F0","\U0001F1F1","\U0001F1F2","\U0001F1F3","\U0001F1F4",
     "\U0001F1F5","\U0001F1F6","\U0001F1F7","\U0001F1F8","\U0001F1F9"]
-    question = args[0]
-    try:
-        choices = "\n".join([f'{emote_alphabet[i]}  {args[i + 1]}' for i in range(len(args) - 1)])
-        embed_poll = discord.Embed(title=question,description=choices,color=0xaaaaaa)
-        embed_poll.set_footer(text=f"Requested by {ctx.author}.")
-        message = await ctx.send(embed=embed_poll)
-        for i in range(len(args) - 1):
-            await message.add_reaction(emote_alphabet[i])
-    except IndexError or Forbidden:
-        await ctx.send("Discord doesn't allow me to react with more than 20 emojis. So you can't have more than 20 choices for your poll.")
 
+    @commands.command(aliases=["study"],help="test")
+    async def poll(self,ctx,*args):
+        if len(args) > 1:
+            question = args[0].capitalize()
+            try:
+                choices = "\n".join([f'{self.emote_alphabet[i]}  {args[i + 1].capitalize()}' for i in range(len(args) - 1)])
+                embed_poll = discord.Embed(title=question,description=choices,color=0xaaaaaa)
+                embed_poll.set_footer(text=f"Requested by {ctx.author}.")
+                message = await ctx.send(embed=embed_poll)
+                for i in range(len(args) - 1):
+                    await message.add_reaction(self.emote_alphabet[i])
+            except IndexError or Forbidden:
+                await ctx.send("Discord doesn't allow me to react with more than 20 emojis. So you can't have more than 20 choices for your poll.")
+        else:
+            return await ctx.send("I need at least the topic of the poll and an option. Please provide them both.")
 
+class Logs(commands.Cog):
+    def __init__(self,bot):
+        self.bot = bot
+    
+    @commands.Cog.listener()
+    async def on_guild_remove(self,guild):
+        guild = f"_{str(guild.id)}"
+        async with aiosqlite.connect("databases/logs_channels.db") as db:
+            await db.execute("DELETE * FROM logs_channels WHERE id = (?);",(guild,))
+            await db.commit()
+        async with aiosqlite.connect("databases/logs.db") as db:
+            await db.execute("DROP TABLE (?)",(guild,))
+            await db.commit()
+
+    @commands.group(invoke_without_command=True,aliases=["log"])
+    async def logs(self,ctx):
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Subcommand required.")
+    
+    @logs.group()
+    async def logchannel(self,ctx):
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Either add, edit or remove a log channel.")
+    
+    @logchannel.command()
+    async def add(self,ctx,text_channel:discord.TextChannel):
+        await text_channel.send(f"{ctx.author} picked this channel to be the log channel. I will send everything I can track here (kick, ban, messages deleted,reactions added etc..).")
+        async with aiosqlite.connect("databases/logs_channels.db") as db:
+            await db.execute("INSERT INTO logs_channels VALUES(?,?);",(ctx.guild.id,text_channel.id))
+            await db.commit()
+    
+    @logchannel.command()
+    async def remove(self,ctx):
+        await ctx.send(f"{ctx.author} decided to disable the logs in this channel. You can always re-add it back later !")
+        async with aiosqlite.connect("databases/logs_channels.db") as db:
+            await db.execute("DELETE FROM logs_channels WHERE guild_id = (?);",(ctx.guild.id,))
+            await db.commit()
+    
+    @commands.Cog.listener()
+    async def on_message(self,message):
+        pass
+    
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
@@ -375,5 +425,6 @@ bot.add_cog(Moderation(bot))
 bot.add_cog(Music(bot))
 bot.add_cog(Tags(bot))
 bot.add_cog(ErrorHandler(bot))
-
+bot.add_cog(Poll(bot))
+bot.add_cog(Logs(bot))
 bot.run(TOKEN)
