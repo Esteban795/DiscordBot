@@ -2,6 +2,7 @@ from discord import colour
 from discord.errors import Forbidden
 from discord.ext.commands.core import command
 from discord.ext.commands.errors import MissingRequiredArgument
+from discord.utils import sleep_until
 from dotenv import load_dotenv
 import discord
 import os
@@ -264,18 +265,18 @@ class Tags(commands.Cog):
     @commands.Cog.listener()
     async def on_guild_join(self,guild:discord.Guild):
         async with aiosqlite.connect("databases/tags.db") as db:
-            await db.execute(f"CREATE TABLE IF NOT EXISTS _{str(guild.id)}(tag_name TEXT,description TEXT);")
+            await db.execute(f"CREATE TABLE IF NOT EXISTS _{guild.id}(tag_name TEXT,description TEXT);")
             await db.commit()
     
     @commands.Cog.listener()
     async def on_guild_remove(self,guild):
         async with aiosqlite.connect("databases/tags.db") as db:
-            await db.execute(f"DROP TABLE _{str(guild.id)};")
+            await db.execute(f"DROP TABLE _{guild.id};")
             await db.commit()
     
     @commands.group(invoke_without_command=True)
     async def tag(self,ctx,*,tag_name):
-        guild_id = f"_{str(ctx.guild.id)}"
+        guild_id = f"_{ctx.guild.id}"
         if ctx.invoked_subcommand is None:
             async with aiosqlite.connect("databases/tags.db") as db:
                 async with db.execute(f"SELECT description FROM {guild_id} WHERE tag_name = '{tag_name}';") as cursor:
@@ -293,20 +294,20 @@ class Tags(commands.Cog):
                             
     @tag.command()
     async def add(self,ctx,tag_name,*,description):
-        guild_id = f"_{str(ctx.guild.id)}"
+        guild_id = f"_{ctx.guild.id}"
         async with aiosqlite.connect("databases/tags.db") as db:
             async with db.execute(f"SELECT description FROM {guild_id} WHERE tag_name = '{tag_name}';") as cursor:
                 desc = await cursor.fetchone()
             if desc is not None:
                 await ctx.send(f"Tag '{tag_name}' already exists in the database. Please pick another tag name !")
             else:
-                await db.execute(f"INSERT INTO _{str(ctx.guild.id)} VALUES('{tag_name}','{description}')")
+                await db.execute(f"INSERT INTO _{ctx.guild.id} VALUES('{tag_name}','{description}')")
                 await db.commit()
                 await ctx.send(f"Successfully added '{tag_name}' tag.")
     
     @tag.command()
     async def edit(self,ctx,tag_name,*,description):
-        guild_id = f"_{str(ctx.guild.id)}"
+        guild_id = f"_{ctx.guild.id}"
         async with aiosqlite.connect("databases/tags.db") as db:
             async with db.execute(f"SELECT description FROM {guild_id} WHERE tag_name = '{tag_name}';") as cursor:
                 desc = await cursor.fetchone()
@@ -319,14 +320,14 @@ class Tags(commands.Cog):
 
     @tag.command()
     async def remove(self,ctx,*,tag_name):
-        guild_id = f"_{str(ctx.guild.id)}"
+        guild_id = f"_{ctx.guild.id}"
         async with aiosqlite.connect("databases/tags.db") as db:
             async with db.execute(f"SELECT description FROM {guild_id} WHERE tag_name = '{tag_name}';") as cursor:
                 desc = await cursor.fetchone()
             if desc is None:
                 await ctx.send(f"No tag named '{tag_name}', so you can't remove it.")
             else:
-                await db.execute(f"DELETE FROM _{str(ctx.guild.id)} WHERE tag_name = '{tag_name}';")                     
+                await db.execute(f"DELETE FROM _{ctx.guild.id} WHERE tag_name = '{tag_name}';")                     
                 await db.commit()
                 await ctx.send(f"Successfully removed '{tag_name}' tag.")
 
@@ -378,10 +379,10 @@ class Poll(commands.Cog):
 class Logs(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
-    
+
     @commands.Cog.listener()
     async def on_guild_remove(self,guild):
-        guild = f"_{str(guild.id)}"
+        guild = f"_{guild.id}"
         async with aiosqlite.connect("databases/logs_channels.db") as db:
             await db.execute("DELETE * FROM logs_channels WHERE id = (?);",(guild,))
             await db.commit()
@@ -430,11 +431,17 @@ async def on_raw_reaction_add(payload):
     print(msg.content)
 
 @bot.event
+async def on_message_edit(before,after):
+    print(before.content)
+    print(after.content)
+
+@bot.event
 async def on_raw_message_delete(payload):
     print(payload)
     channel = bot.get_channel(payload.channel_id)
     msg = await channel.fetch_message(payload.message_id)
     print(msg.content)
+
 
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
