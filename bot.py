@@ -8,6 +8,7 @@ import os
 from discord.ext import commands
 import requests
 import asyncio
+from requests.models import parse_url
 import youtube_dl
 import aiosqlite
 from difflib import get_close_matches
@@ -420,6 +421,21 @@ class Logs(commands.Cog):
 async def on_ready():
     print(f'Logged as {bot.user.name}')
 
+
+@bot.event
+async def on_raw_reaction_add(payload):
+    print(payload)
+    channel = bot.get_channel(payload.channel_id)
+    msg = await channel.fetch_message(payload.message_id)
+    print(msg.content)
+
+@bot.event
+async def on_raw_message_delete(payload):
+    print(payload)
+    channel = bot.get_channel(payload.channel_id)
+    msg = await channel.fetch_message(payload.message_id)
+    print(msg.content)
+
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
 bot.add_cog(Music(bot))
@@ -427,4 +443,5 @@ bot.add_cog(Tags(bot))
 bot.add_cog(ErrorHandler(bot))
 bot.add_cog(Poll(bot))
 bot.add_cog(Logs(bot))
+
 bot.run(TOKEN)
