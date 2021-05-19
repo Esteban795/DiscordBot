@@ -1,19 +1,14 @@
-from discord import colour
-from discord.errors import Forbidden
-from discord.ext.commands.core import command
-from discord.ext.commands.errors import MissingRequiredArgument
-from discord.utils import sleep_until
+
 from dotenv import load_dotenv
 import discord
 import os
 from discord.ext import commands
 import requests
 import asyncio
-from requests.models import parse_url
 import youtube_dl
 import aiosqlite
 from difflib import get_close_matches
-
+from datetime import datetime
 load_dotenv()
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
@@ -371,7 +366,7 @@ class Poll(commands.Cog):
                 message = await ctx.send(embed=embed_poll)
                 for i in range(len(args) - 1):
                     await message.add_reaction(self.emote_alphabet[i])
-            except IndexError or Forbidden:
+            except IndexError:
                 await ctx.send("Discord doesn't allow me to react with more than 20 emojis. So you can't have more than 20 choices for your poll.")
         else:
             return await ctx.send("I need at least the topic of the poll and an option. Please provide them both.")
@@ -379,6 +374,15 @@ class Poll(commands.Cog):
 class Logs(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
+
+    async def get_logs_channels(self,guild_id):
+        async with aiosqlite.connect("databases/logs_channels.db") as db:
+            cursor = await db.execute("SELECT channel_id FROM logs_channels WHERE guild_id = (?);",(guild_id,))
+            result = await cursor.fetchone()
+        if result:
+            return result[0]
+        else:
+            return None
 
     @commands.Cog.listener()
     async def on_guild_remove(self,guild):
@@ -416,7 +420,19 @@ class Logs(commands.Cog):
     
     @commands.Cog.listener()
     async def on_message(self,message):
-        pass
+        if not message.author.bot:
+            channel_id = await self.get_logs_channels(message.guild.id)
+            if channel_id:
+                channel = message.guild.get_channel(channel_id)
+                logEmbed = discord.Embed(title="New message !",color=0xaaffaa,timestamp=datetime.utcnow())
+                logEmbed.add_field(name="Channel :",value=f"[{message.channel}](https://discord.com/channels/{message.guild.id}/{channel_id})")
+                logEmbed.add_field(name="Message : ",value=f"[{message.content}]({message.jump_url})")
+                logEmbed.set_author(name=message.author,icon_url=message.author.avatar_url)
+                await channel.send(embed=logEmbed)
+    
+    
+
+
     
 @bot.event
 async def on_ready():
@@ -441,6 +457,13 @@ async def on_raw_message_delete(payload):
     channel = bot.get_channel(payload.channel_id)
     msg = await channel.fetch_message(payload.message_id)
     print(msg.content)
+
+@bot.command()
+async def spam(ctx,member:discord.Member=None):
+    member = member or ctx.author
+    for i in range(50):
+        await ctx.send(member.mention)
+    await ctx.channel.purge(limit=51)
 
 
 bot.add_cog(ChuckNorris(bot))
