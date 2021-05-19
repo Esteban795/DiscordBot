@@ -430,21 +430,25 @@ class Logs(commands.Cog):
                 logEmbed.set_author(name=message.author,icon_url=message.author.avatar_url)
                 await channel.send(embed=logEmbed)
     
-    
-
-
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self,payload):
+        print(payload)
+        channel = bot.get_channel(payload.channel_id)
+        msg = await channel.fetch_message(payload.message_id)
+        print(msg.content)
+        print(payload.emoji.name)
     
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
 
-
+"""
 @bot.event
 async def on_raw_reaction_add(payload):
     print(payload)
     channel = bot.get_channel(payload.channel_id)
     msg = await channel.fetch_message(payload.message_id)
-    print(msg.content)
+    print(msg.content)"""
 
 @bot.event
 async def on_message_edit(before,after):
@@ -475,3 +479,4 @@ bot.add_cog(Poll(bot))
 bot.add_cog(Logs(bot))
 
 bot.run(TOKEN)
+
