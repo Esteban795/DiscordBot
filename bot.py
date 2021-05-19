@@ -1,4 +1,5 @@
 
+from discord.utils import valid_icon_size
 from dotenv import load_dotenv
 import discord
 import os
@@ -425,42 +426,50 @@ class Logs(commands.Cog):
             if channel_id:
                 channel = message.guild.get_channel(channel_id)
                 logEmbed = discord.Embed(title="New message !",color=0xaaffaa,timestamp=datetime.utcnow())
-                logEmbed.add_field(name="Channel :",value=f"[{message.channel}](https://discord.com/channels/{message.guild.id}/{channel_id})")
+                logEmbed.add_field(name="Channel :",value=message.channel.mention)
                 logEmbed.add_field(name="Message : ",value=f"[{message.content}]({message.jump_url})")
                 logEmbed.set_author(name=message.author,icon_url=message.author.avatar_url)
                 await channel.send(embed=logEmbed)
     
     @commands.Cog.listener()
     async def on_raw_reaction_add(self,payload):
-        print(payload)
-        channel = bot.get_channel(payload.channel_id)
-        msg = await channel.fetch_message(payload.message_id)
-        print(msg.content)
-        print(payload.emoji.name)
+        if not payload.member.bot:
+            channel_id = await self.get_logs_channels(payload.guild_id)
+            if channel_id:
+                channel = payload.member.guild.get_channel(channel_id)
+                reaction_channel = payload.member.guild.get_channel(payload.channel_id)
+                msg = await reaction_channel.fetch_message(payload.message_id)
+                reaction_embed = discord.Embed(title="Reaction added.",color=0xaaffaa,timestamp=datetime.utcnow())
+                reaction_embed.add_field(name="Member who added the reaction :",value=payload.member)
+                reaction_embed.add_field(name="Reaction added :",value=payload.emoji.name)
+                reaction_embed.add_field(name="Original message :",value=f"[{msg.content}]({msg.jump_url})")
+                await channel.send(embed=reaction_embed)
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_remove(self,payload):
+        user = bot.get_user(payload.user_id)
+        if not user.bot:
+            channel_id = await self.get_logs_channels(payload.guild_id)
+            if channel_id:
+                guild = bot.get_guild(payload.guild_id)
+                channel = guild.get_channel(channel_id)
+                reaction_channel = guild.get_channel(payload.channel_id)
+                msg = await reaction_channel.fetch_message(payload.message_id)
+                reaction_embed = discord.Embed(title="Reaction removed.",color=0xaaffaa,timestamp=datetime.utcnow())
+                reaction_embed.add_field(name="Member who removed the reaction :",value=user)
+                reaction_embed.add_field(name="Reaction removed :",value=payload.emoji.name)
+                reaction_embed.add_field(name="Original message :",value=f"[{msg.content}]({msg.jump_url})")
+                reaction_embed.set_author(name=user,icon_url=user.avatar_url)
+                await channel.send(embed=reaction_embed)
     
+    @commands.Cog.listener()
+    async def on_raw_message_edit(self,payload):
+        print(payload)
+
+
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
-
-"""
-@bot.event
-async def on_raw_reaction_add(payload):
-    print(payload)
-    channel = bot.get_channel(payload.channel_id)
-    msg = await channel.fetch_message(payload.message_id)
-    print(msg.content)"""
-
-@bot.event
-async def on_message_edit(before,after):
-    print(before.content)
-    print(after.content)
-
-@bot.event
-async def on_raw_message_delete(payload):
-    print(payload)
-    channel = bot.get_channel(payload.channel_id)
-    msg = await channel.fetch_message(payload.message_id)
-    print(msg.content)
 
 @bot.command()
 async def spam(ctx,member:discord.Member=None):
