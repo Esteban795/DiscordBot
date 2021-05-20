@@ -1,4 +1,5 @@
 
+from asyncio.tasks import create_task
 from discord.utils import valid_icon_size
 from dotenv import load_dotenv
 import discord
@@ -464,7 +465,17 @@ class Logs(commands.Cog):
     
     @commands.Cog.listener()
     async def on_raw_message_edit(self,payload):
-        print(payload)
+        guild_id = int(payload.data["guild_id"])
+        log_channel_id = await self.get_logs_channels(guild_id)
+        if log_channel_id:
+            user = bot.get_user(payload.data["author"]["id"])
+            if not user.bot:
+                if payload.cached_message:
+                    edit_embed = discord.Embed("Message edited.",color=0xaaffaa,timestamp=datetime.utcnow())
+                    edit_embed.add_field(name="Old message :",value=payload.cached_message.content)
+                    edit_embed.set_author(name=user,icon_url=user.avatar_url)
+
+            
 
 
 @bot.event
