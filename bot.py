@@ -1,5 +1,7 @@
 
 from asyncio.tasks import create_task
+from sqlite3.dbapi2 import Timestamp
+from discord import message
 from discord.utils import valid_icon_size
 from dotenv import load_dotenv
 import discord
@@ -7,6 +9,7 @@ import os
 from discord.ext import commands
 import requests
 import asyncio
+from requests.models import parse_url
 import youtube_dl
 import aiosqlite
 from difflib import get_close_matches
@@ -468,15 +471,58 @@ class Logs(commands.Cog):
         guild_id = int(payload.data["guild_id"])
         log_channel_id = await self.get_logs_channels(guild_id)
         if log_channel_id:
-            user = bot.get_user(payload.data["author"]["id"])
+            user = bot.get_user(int(payload.data["author"]["id"]))
             if not user.bot:
                 if payload.cached_message:
-                    edit_embed = discord.Embed("Message edited.",color=0xaaffaa,timestamp=datetime.utcnow())
+                    log_channel = payload.cached_message.guild.get_channel(log_channel_id)
+                    edit_embed = discord.Embed(title="Message edited.",color=0xaaffaa,timestamp=datetime.utcnow())
                     edit_embed.add_field(name="Old message :",value=payload.cached_message.content)
+                    edit_embed.add_field(name="Message originally sent at :",value=payload.data["timestamp"],inline=True)
+                    edit_embed.add_field(name="New message",value=f"[{payload.data['content']}]({payload.cached_message.jump_url})")
                     edit_embed.set_author(name=user,icon_url=user.avatar_url)
+                else:
+                    guild = bot.get_guild(guild_id)
+                    log_channel = guild.get_channel(log_channel_id)
+                    original_channel = guild.get_channel(payload.channel_id)
+                    msg = await original_channel.fetch_message(payload.message_id)
+                    edit_embed = discord.Embed(title="Message edited.",color=0xaaffaa,timestamp=datetime.utcnow())
+                    edit_embed.add_field(name="Old message :",value="The message was sent when I was offline or it's too old.")
+                    edit_embed.add_field(name="New message",value=f"[{payload.data['content']}]({msg.jump_url})")
+                    edit_embed.set_author(name=user,icon_url=user.avatar_url)
+                return await log_channel.send(embed=edit_embed)
+                    
+    @commands.Cog.listener()
+    async def on_raw_message_delete(self,payload):
+        log_channel_id = await self.get_logs_channels(payload.guild_id)
+        if log_channel_id:
+            if payload.cached_message:
+                log_channel = payload.cached_message.author.guild.get_channel(log_channel_id)
+                delete_message_embed = discord.Embed(title="Message deleted.",color=0xaaffaa,timestamp=datetime.utcnow())
+                delete_message_embed.add_field(name="Channel : ",value=payload.cached_message.channel)
+                if len(payload.cached_message.embeds):
+                    delete_message_embed.add_field(name="Message content :",value="This was an embed. I can't tell you what was in !")
+                else:
+                    delete_message_embed.add_field(name="Message content :",value=payload.cached_message.content)
+                    delete_message_embed.set_author(name=payload.cached_message.author,icon_url=payload.cached_message.author.avatar_url)
+            else:
+                guild = bot.get_guild(payload.guild_id)
+                log_channel = guild.get_channel(log_channel_id)
+                original_channel = guild.get_channel(payload.channel_id)
+                delete_message_embed = discord.Embed(title="Message deleted.",color=0xaaffaa,timestamp=datetime.utcnow())
+                delete_message_embed.add_field(name="Message content :",value="The message was sent when I was offline or is too old. No more informations about it.")
+                delete_message_embed.add_field(name="Channel : ",value=original_channel)
+            return await log_channel.send(embed=delete_message_embed)
+        
 
-            
-
+    @commands.Cog.listener()
+    async def on_raw_bulk_message_delete(self,payload):
+        log_channel_id = await self.get_logs_channels(payload.guild_id)
+        if log_channel_id:
+            guild = payload.cached_messages[0].guild
+            log_channel = guild.get_channel(log_channel_id) 
+            bulk_delete_embed = discord.Embed(title=f"{len(payload.message_ids) - 1} messages deleted.")
+            bulk_delete_embed.set_author(name=payload.cached_messages[0].author,icon_url=payload.cached_messages[0].author.avatar_url)
+            return await log_channel.send(embed=bulk_delete_embed)
 
 @bot.event
 async def on_ready():
@@ -488,7 +534,6 @@ async def spam(ctx,member:discord.Member=None):
     for i in range(50):
         await ctx.send(member.mention)
     await ctx.channel.purge(limit=51)
-
 
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
