@@ -1,19 +1,16 @@
-
-from asyncio.tasks import create_task
-from sqlite3.dbapi2 import Timestamp
-from discord import message
-from discord.utils import valid_icon_size
+from time import ctime
+from discord import reaction
 from dotenv import load_dotenv
 import discord
 import os
 from discord.ext import commands
 import requests
 import asyncio
-from requests.models import parse_url
 import youtube_dl
 import aiosqlite
 from difflib import get_close_matches
 from datetime import datetime
+
 load_dotenv()
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
@@ -519,10 +516,51 @@ class Logs(commands.Cog):
         log_channel_id = await self.get_logs_channels(payload.guild_id)
         if log_channel_id:
             guild = payload.cached_messages[0].guild
-            log_channel = guild.get_channel(log_channel_id) 
-            bulk_delete_embed = discord.Embed(title=f"{len(payload.message_ids) - 1} messages deleted.")
+            log_channel = guild.get_channel(log_channel_id)
+            original_channel = guild.get_channel(payload.channel_id)
+            bulk_delete_embed = discord.Embed(title=f"{len(payload.message_ids) - 1} messages deleted in {original_channel} channel.")
             bulk_delete_embed.set_author(name=payload.cached_messages[0].author,icon_url=payload.cached_messages[0].author.avatar_url)
             return await log_channel.send(embed=bulk_delete_embed)
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_clear(self,payload):
+        print(payload)
+        log_channel_id = await self.get_logs_channels(payload.guild_id)
+        log_channel = bot.get_channel(log_channel_id)
+        original_channel = bot.get_channel(payload.channel_id)
+        message = await original_channel.fetch_message(payload.message_id)
+        reaction_clear_embed = discord.Embed(title="Reactions cleared.",color=0xaaffaa,timestamp=datetime.utcnow())
+        reaction_clear_embed.add_field(name="Channel : ",value=original_channel)
+        reaction_clear_embed.add_field(name="Message : ",value=f"[{message.content}]({message.jump_url})")
+        await log_channel.send(embed=reaction_clear_embed)
+    
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self,channel):
+        log_channel_id = await self.get_logs_channels(channel.guild.id)
+        log_channel = bot.get_channel(log_channel_id)
+        channel_deleted_embed = discord.Embed(title=f"{channel.type} channel deleted.".capitalize(),color=0xaaffaa,timestamp=datetime.utcnow())
+        channel_deleted_embed.add_field(name="Category :",value=channel.category)
+        channel_deleted_embed.add_field(name="Name  :",value=channel.name,inline=True)
+        channel_deleted_embed.add_field(name="Created at  :",value=str(channel.created_at)[:-7],inline=True)
+        if str(channel.type) == "text":
+            channel_deleted_embed.add_field(name="Topic :",value=f"{channel.topic}.".capitalize())
+            channel_deleted_embed.add_field(name="Slowmode delay :",value=channel.slowmode_delay)
+        elif str(channel.type) == "voice":
+            channel_deleted_embed.add_field(name="User limit : ",value=channel.user_limit)
+        await log_channel.send(embed=channel_deleted_embed)
+
+
+    @commands.Cog.listener()
+    async def on_guild_channel_create(self,channel):
+        log_channel_id = await self.get_logs_channels(channel.guild.id)
+        log_channel = bot.get_channel(log_channel_id)
+        channel_created_embed = discord.Embed(title=f"{channel.type} channel created.".capitalize(),color=0xaaffaa,timestamp=datetime.utcnow())
+        channel_created_embed.add_field(name="Category :",value=channel.category)
+        channel_created_embed.add_field(name="Name  :",value=channel.name,inline=True)
+        channel_created_embed.add_field(name="Created at  :",value=str(channel.created_at)[:-7],inline=True)
+        
+        await log_channel.send(embed=channel_created_embed)
+
 
 @bot.event
 async def on_ready():
