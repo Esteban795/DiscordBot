@@ -1,6 +1,3 @@
-from logging import log
-from time import ctime
-from discord import reaction
 from dotenv import load_dotenv
 import discord
 import os
@@ -69,9 +66,9 @@ class Moderation(commands.Cog):
     @commands.Cog.listener()
     async def on_guild_join(self,guild:discord.Guild):
         """Create the role muted as soon as the bot joins the guild, if no muted role exists. Disable send messages permissions and speak permissions for muted role in every channel"""
-        for role in guild.roles:
-            if role.name.lower() == "muted":
-                return
+        existing_muted_role = discord.utils.get(guild.roles,name="muted") or discord.utils.get(guild.roles,name="Muted")
+        if existing_muted_role:
+            return
         mutedRole = await guild.create_role(name="Muted",permissions=discord.Permissions(send_messages=False,speak=False))
         for channel in guild.channels:
             await channel.set_permissions(mutedRole, send_messages = False, speak = False)
@@ -389,12 +386,8 @@ class Logs(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_remove(self,guild):
-        guild = f"_{guild.id}"
         async with aiosqlite.connect("databases/logs_channels.db") as db:
-            await db.execute("DELETE * FROM logs_channels WHERE id = (?);",(guild,))
-            await db.commit()
-        async with aiosqlite.connect("databases/logs.db") as db:
-            await db.execute("DROP TABLE (?)",(guild,))
+            await db.execute("DELETE FROM logs_channels WHERE guild_id = (?);",(guild.id,))
             await db.commit()
 
     @commands.group(invoke_without_command=True,aliases=["log"])
@@ -618,21 +611,32 @@ class Logs(commands.Cog):
             member_join_embed.set_author(name=member,url=member.dm_channel,icon_url=member.avatar_url)
             member_join_embed.add_field(name="Public flags :",value=member.public_flags)
             await log_channel.send(embed=member_join_embed)
-
+    
     @commands.Cog.listener()
     async def on_member_update(self,before,after):
+        if before.activity != after.activity or before.status != after.status:
+            return
         log_channel_id = await self.get_logs_channels(before.guild.id)
         if log_channel_id:
             log_channel = bot.get_channel(log_channel_id)
             member_updated_embed = discord.Embed(title=f"{before} updated.",color=0xaaffaa,timestamp=datetime.utcnow())
-            if not before.status == after.status:
-                member_updated_embed.add_field(name="Status : ",value=after.status)
             if not before.display_name == after.display_name:
-                member_updated_embed.add_field(name="Nickname : ",value=after.display_name)
+                member_updated_embed.add_field(name="Old nickname : ",value=before.display_name)
+                member_updated_embed.add_field(name="New nickname : ",value=after.display_name)
             if not before.roles == after.roles:
-                member_updated_embed.add_field(name="Roles : ",value=" ".join([i.name for i in before.roles]))
+                member_updated_embed.add_field(name="Old roles : ",value=" ".join([i.name for i in before.roles]))
+                member_updated_embed.add_field(name="New roles : ",value=" ".join([i.name for i in after.roles]))
             await log_channel.send(embed=member_updated_embed)
 
+    @commands.Cog.listener()
+    async def on_guild_join(self,guild):
+        guild_owner = guild.owner 
+        embedVar = discord.Embed(title="I just joined your server. Thanks for adding me here !",color=0x0000ff,timestamp=datetime.utcnow(),description="Please, set my custom role over any other roles that exists on your server. This will allow me to show my true potential (not evil potential, I won't do anything else than what the members tell me to.")
+        embedVar.add_field(name="Website :",value="Currently working on it. Soon, you will be able to do a lot more things !")
+        embedVar.add_field(name="What can I do ?",value="I can do a lot of things. Check $help !")
+        embedVar.add_field(name="How to change my prefix ?",value="Work in progress here !")
+        embedVar.add_field(name="Want to talk with the dev ? Check out :", value="Esteban#7985")
+        await guild_owner.send(embed=embedVar)
 
 @bot.event
 async def on_ready():
