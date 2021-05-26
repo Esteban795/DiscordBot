@@ -1,3 +1,4 @@
+from sqlite3 import dbapi2
 from dotenv import load_dotenv
 import discord
 import os
@@ -9,8 +10,18 @@ import aiosqlite
 from difflib import get_close_matches
 from datetime import datetime
 
+
+async def get_prefix(bot,message):
+    async with aiosqlite.connect("databases/prefixes.db") as db:
+        async with db.execute("SELECT custom_prefixes FROM prefixes WHERE guild_id = (?);",(message.guild.id,)) as cursor:
+            result = await cursor.fetchone()
+            if result is None:
+                return "$"
+            else:
+                return result[0].split(" ") + ["$"]
+
 load_dotenv()
-bot = commands.Bot(command_prefix=commands.when_mentioned_or("$"),description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
+bot = commands.Bot(command_prefix=get_prefix,description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
 
 ydl_opts = {
@@ -628,26 +639,62 @@ class Logs(commands.Cog):
                 member_updated_embed.add_field(name="New roles : ",value=" ".join([i.name for i in after.roles]))
             await log_channel.send(embed=member_updated_embed)
 
+class CustomPrefixes(commands.Cog):
+    def __init__(self,bot):
+        self.bot = bot
+    
     @commands.Cog.listener()
-    async def on_guild_join(self,guild):
-        guild_owner = guild.owner 
-        embedVar = discord.Embed(title="I just joined your server. Thanks for adding me here !",color=0x0000ff,timestamp=datetime.utcnow(),description="Please, set my custom role over any other roles that exists on your server. This will allow me to show my true potential (not evil potential, I won't do anything else than what the members tell me to.")
-        embedVar.add_field(name="Website :",value="Currently working on it. Soon, you will be able to do a lot more things !")
-        embedVar.add_field(name="What can I do ?",value="I can do a lot of things. Check $help !")
-        embedVar.add_field(name="How to change my prefix ?",value="Work in progress here !")
-        embedVar.add_field(name="Want to talk with the dev ? Check out :", value="Esteban#7985")
-        await guild_owner.send(embed=embedVar)
+    async def on_guild_remove(self,guild):
+        async with aiosqlite.connect("databases/prefixes.db") as db:
+            await db.execute("DELETE FROM prefixes WHERE guild_id = (?);",(guild.id,))
+            await db.commit()
+    
+    @commands.group()
+    async def prefix(self,ctx):
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Subcommand required.")
+
+    @prefix.command()
+    async def add(self,ctx,*,custom_prefixes):
+        async with aiosqlite.connect("databases/prefixes.db") as db: 
+            check_for_existing_prefixes = await db.execute("SELECT custom_prefixes FROM prefixes WHERE guild_id = (?)",(ctx.guild.id,))
+            existing_custom_prefixes = await check_for_existing_prefixes.fetchone()
+            if existing_custom_prefixes:
+                new_custom_prefixes = f"{custom_prefixes} {existing_custom_prefixes[0]}"
+                await db.execute("UPDATE prefixes SET custom_prefixes = (?) WHERE guild_id = (?);",(new_custom_prefixes,ctx.guild.id))
+                await db.commit()
+            else:
+                new_custom_prefixes = custom_prefixes
+                await db.execute("INSERT INTO prefixes VALUES(?,?);",(ctx.guild.id,custom_prefixes))
+                await db.commit()
+        await ctx.send(f"New custom prefixes : {new_custom_prefixes}")
+        
+
+class OwnerOnly(commands.Cog):
+    def __init__(self,bot):
+        self.bot = bot
+    
+    @commands.command()
+    @commands.is_owner()
+    async def spam(ctx,member:discord.Member=None):
+        member = member or ctx.author
+        for i in range(50):
+            await ctx.send(member.mention)
+        await ctx.channel.purge(limit=51)
+
+
+        
+@bot.command()
+async def echo(ctx,*,args):
+    await ctx.send(args)
 
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
 
 @bot.command()
-async def spam(ctx,member:discord.Member=None):
-    member = member or ctx.author
-    for i in range(50):
-        await ctx.send(member.mention)
-    await ctx.channel.purge(limit=51)
+async def guild_id(ctx):
+    await ctx.send(ctx.guild.id)
 
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
@@ -656,6 +703,7 @@ bot.add_cog(Tags(bot))
 bot.add_cog(ErrorHandler(bot))
 bot.add_cog(Poll(bot))
 bot.add_cog(Logs(bot))
+bot.add_cog(CustomPrefixes(bot))
 
 bot.run(TOKEN)
 
