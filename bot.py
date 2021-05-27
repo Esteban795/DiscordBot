@@ -9,7 +9,24 @@ import youtube_dl
 import aiosqlite
 from difflib import get_close_matches
 from datetime import datetime
+import re
 
+
+time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])")
+time_dict = {"h":3600, "s":1, "m":60, "d":86400}
+
+class TimeConverter(commands.Converter):
+    async def convert(self, ctx, argument):
+        matches = time_regex.findall(argument.lower())
+        time = 0
+        for v, k in matches:
+            try:
+                time += time_dict[k]*float(v)
+            except KeyError:
+                raise commands.BadArgument("{} is an invalid time-key! h/m/s/d are valid!".format(k))
+            except ValueError:
+                raise commands.BadArgument("{} is not a number!".format(v))
+        return time
 
 async def get_prefix(bot,message):
     async with aiosqlite.connect("databases/prefixes.db") as db:
@@ -113,12 +130,14 @@ class Moderation(commands.Cog):
 
     @commands.command()
     @commands.has_permissions()
-    async def mute(self,ctx,member:discord.Member,time:str=None):
-        mutedRole = [role for role in ctx.guild.roles if role.name == "Muted"][0]
-        await member.add_roles(mutedRole)
-        if time is not None:
-            await asyncio.sleep(int(time))
-            await member.remove_roles(mutedRole)
+    async def mute(self,ctx,member:discord.Member,time:TimeConverter=None):
+        mutedRole = discord.utils.get(ctx.guild.roles,name="Muted")
+        if mutedRole:
+            await member.add_roles(mutedRole)
+            await ctx.send(("Muted {} for {}s" if time else "Muted {}").format(member, time))
+            if time:
+                await asyncio.sleep(time)
+                await member.remove_roles(mutedRole)
     
     @commands.command(aliases=["demute"])
     @commands.has_permissions()
@@ -668,14 +687,29 @@ class CustomPrefixes(commands.Cog):
                 await db.execute("INSERT INTO prefixes VALUES(?,?);",(ctx.guild.id,custom_prefixes))
                 await db.commit()
         await ctx.send(f"New custom prefixes : {new_custom_prefixes}")
+
+    @prefix.command()
+    async def remove(self,ctx):
+        async with aiosqlite.connect("databases/prefixes.db") as db:
+            await db.execute("DELETE FROM prefixes WHERE guild_id = (?);",(ctx.guild.id,))
+            await db.commit()
+        await ctx.send("Custom prefixes were removed. You now have to use my default prefix, which is '$'.")
+    
+    @prefix.command()
+    async def edit(self,ctx,*,custom_prefixes):
+        async with aiosqlite.connect("databases/prefixes.db") as db:
+            await db.execute("UPDATE prefixes SET custom_prefixes = (?) WHERE guild_id = (?);",(custom_prefixes,ctx.guild.id))
+            await db.commit()
+        await ctx.send(f"Custom prefixes edited. You can now use : {custom_prefixes} and of course '$' !")
         
 
 class OwnerOnly(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
     
+    async def cog_check(self, ctx):
+        return await self.bot.is_owner(ctx.author)
     @commands.command()
-    @commands.is_owner()
     async def spam(ctx,member:discord.Member=None):
         member = member or ctx.author
         for i in range(50):
