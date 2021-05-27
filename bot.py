@@ -1,4 +1,3 @@
-from sqlite3 import dbapi2
 from dotenv import load_dotenv
 import discord
 import os
@@ -472,11 +471,11 @@ class Logs(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self,payload):
-        user = bot.get_user(payload.user_id)
+        user = self.bot.get_user(payload.user_id)
         if not user.bot:
             channel_id = await self.get_logs_channels(payload.guild_id)
             if channel_id:
-                guild = bot.get_guild(payload.guild_id)
+                guild = self.bot.get_guild(payload.guild_id)
                 channel = guild.get_channel(channel_id)
                 reaction_channel = guild.get_channel(payload.channel_id)
                 msg = await reaction_channel.fetch_message(payload.message_id)
@@ -493,7 +492,7 @@ class Logs(commands.Cog):
         guild_id = int(payload.data["guild_id"])
         log_channel_id = await self.get_logs_channels(guild_id)
         if log_channel_id:
-            user = bot.get_user(int(payload.data["author"]["id"]))
+            user = self.bot.get_user(int(payload.data["author"]["id"]))
             if not user.bot:
                 if payload.cached_message:
                     log_channel = payload.cached_message.guild.get_channel(log_channel_id)
@@ -510,7 +509,7 @@ class Logs(commands.Cog):
                         edit_embed.set_author(name=user,icon_url=user.avatar_url)
                         
                 else:
-                    guild = bot.get_guild(guild_id)
+                    guild = self.bot.get_guild(guild_id)
                     log_channel = guild.get_channel(log_channel_id)
                     original_channel = guild.get_channel(payload.channel_id)
                     msg = await original_channel.fetch_message(payload.message_id)
@@ -534,7 +533,7 @@ class Logs(commands.Cog):
                     delete_message_embed.add_field(name="Message content :",value=payload.cached_message.content)
                     delete_message_embed.set_author(name=payload.cached_message.author,icon_url=payload.cached_message.author.avatar_url)
             else:
-                guild = bot.get_guild(payload.guild_id)
+                guild = self.bot.get_guild(payload.guild_id)
                 log_channel = guild.get_channel(log_channel_id)
                 original_channel = guild.get_channel(payload.channel_id)
                 delete_message_embed = discord.Embed(title="Message deleted.",color=0xaaffaa,timestamp=datetime.utcnow())
@@ -558,7 +557,7 @@ class Logs(commands.Cog):
     async def on_raw_reaction_clear(self,payload):
         log_channel_id = await self.get_logs_channels(payload.guild_id)
         if log_channel_id:
-            log_channel = bot.get_channel(log_channel_id)
+            log_channel = self.bot.get_channel(log_channel_id)
             original_channel = bot.get_channel(payload.channel_id)
             message = await original_channel.fetch_message(payload.message_id)
             reaction_clear_embed = discord.Embed(title="Reactions cleared.",color=0xaaffaa,timestamp=datetime.utcnow())
@@ -570,7 +569,7 @@ class Logs(commands.Cog):
     async def on_guild_channel_delete(self,channel):
         log_channel_id = await self.get_logs_channels(channel.guild.id)
         if log_channel_id:
-            log_channel = bot.get_channel(log_channel_id)
+            log_channel = self.bot.get_channel(log_channel_id)
             channel_deleted_embed = discord.Embed(title=f"{channel.type} channel deleted.".capitalize(),color=0xaaffaa,timestamp=datetime.utcnow())
             channel_deleted_embed.add_field(name="Category :",value=channel.category)
             channel_deleted_embed.add_field(name="Name  :",value=channel.name,inline=True)
@@ -587,7 +586,7 @@ class Logs(commands.Cog):
     async def on_guild_channel_create(self,channel):
         log_channel_id = await self.get_logs_channels(channel.guild.id)
         if log_channel_id:
-            log_channel = bot.get_channel(log_channel_id)
+            log_channel = self.bot.get_channel(log_channel_id)
             channel_created_embed = discord.Embed(title=f"{channel.type} channel created.".capitalize(),color=0xaaffaa,timestamp=datetime.utcnow())
             channel_created_embed.add_field(name="Category :",value=channel.category)
             channel_created_embed.add_field(name="Name  :",value=channel.name,inline=True)
@@ -602,7 +601,7 @@ class Logs(commands.Cog):
     async def on_guild_channel_update(self,before,after):
         log_channel_id = await self.get_logs_channels(before.guild.id)
         if log_channel_id:
-            log_channel = bot.get_channel(log_channel_id)
+            log_channel = self.bot.get_channel(log_channel_id)
             channel_updated_before_embed = discord.Embed(title=f"{before.type} channel updated. (Before update)".capitalize(),color=0xaaffaa,timestamp=datetime.utcnow())
             channel_updated_before_embed.add_field(name="Category :",value=before.category)
             channel_updated_before_embed.add_field(name="Name  :",value=before.name,inline=True)
@@ -624,7 +623,7 @@ class Logs(commands.Cog):
     async def on_member_join(self,member):
         log_channel_id = await self.get_logs_channels(member.guild.id)
         if log_channel_id:
-            log_channel = bot.get_channel(log_channel_id)
+            log_channel = self.bot.get_channel(log_channel_id)
             member_join_embed = discord.Embed(title="A member just joined the guild.",color=0xaaffaa,timestamp=datetime.utcnow())
             member_join_embed.add_field(name="Created account at :",value=member.created_at)
             member_join_embed.set_author(name=member,url=member.dm_channel,icon_url=member.avatar_url)
@@ -635,7 +634,7 @@ class Logs(commands.Cog):
     async def on_member_remove(self,member):
         log_channel_id = await self.get_logs_channels(member.guild.id)
         if log_channel_id:
-            log_channel = bot.get_channel(log_channel_id)
+            log_channel = self.bot.get_channel(log_channel_id)
             member_join_embed = discord.Embed(title="A member just left the guild.",color=0xaaffaa,timestamp=datetime.utcnow())
             member_join_embed.add_field(name="Joined at :",value=member.joined_at)
             member_join_embed.set_author(name=member,url=member.dm_channel,icon_url=member.avatar_url)
@@ -648,7 +647,7 @@ class Logs(commands.Cog):
             return
         log_channel_id = await self.get_logs_channels(before.guild.id)
         if log_channel_id:
-            log_channel = bot.get_channel(log_channel_id)
+            log_channel = self.bot.get_channel(log_channel_id)
             member_updated_embed = discord.Embed(title=f"{before} updated.",color=0xaaffaa,timestamp=datetime.utcnow())
             if not before.display_name == after.display_name:
                 member_updated_embed.add_field(name="Old nickname : ",value=before.display_name)
@@ -709,6 +708,7 @@ class OwnerOnly(commands.Cog):
     
     async def cog_check(self, ctx):
         return await self.bot.is_owner(ctx.author)
+
     @commands.command()
     async def spam(ctx,member:discord.Member=None):
         member = member or ctx.author
@@ -738,6 +738,6 @@ bot.add_cog(ErrorHandler(bot))
 bot.add_cog(Poll(bot))
 bot.add_cog(Logs(bot))
 bot.add_cog(CustomPrefixes(bot))
-
+bot.add_cog(OwnerOnly(bot))
 bot.run(TOKEN)
 
