@@ -410,6 +410,28 @@ class Poll(commands.Cog):
                 await ctx.send("Discord doesn't allow me to react with more than 20 emojis. So you can't have more than 20 choices for your poll.")
         else:
             return await ctx.send("I need at least the topic of the poll and an option. Please provide them both.")
+    
+    @commands.command()
+    async def timedpoll(self,ctx,time:TimeConverter,question,*args):
+        if len(args) > 0:
+            try:
+                choices = "\n".join([f'{self.emote_alphabet[i]}  {args[i].capitalize()}' for i in range(len(args))])
+                embed_poll = discord.Embed(title=question,description=choices,color=0xaaaaaa)
+                embed_poll.add_field(name="Expires on :",value="test")
+                embed_poll.set_footer(text=f"Requested by {ctx.author}.")
+                message = await ctx.send(embed=embed_poll)
+                for i in range(len(args)):
+                    await message.add_reaction(self.emote_alphabet[i])
+                await asyncio.sleep(time)
+                cached_message = discord.utils.get(bot.cached_messages, id=message.id)
+                reactions_count = sorted([(cached_message.reactions[i].count,i) for i in range(len(args))],key=lambda x:x[0],reverse=True)[0]
+                timed_embed_poll = discord.Embed(title=f"Poll '{question.capitalize()}' just ended !",color=0xaaffaa,timestamp=datetime.utcnow(),description=f"Proposition '{args[reactions_count[1]].capitalize()}' won with {reactions_count[0] - 1} votes !")
+                await ctx.send(embed=timed_embed_poll)
+            except IndexError as e:
+                await ctx.send("Discord doesn't allow me to react with more than 20 emojis. So you can't have more than 20 choices for your poll.")
+        else:
+            await ctx.send("I need at least the topic of the poll and an option. Please provide them both.")
+
 
 class Logs(commands.Cog):
     def __init__(self,bot):
@@ -421,8 +443,7 @@ class Logs(commands.Cog):
             result = await cursor.fetchone()
         if result:
             return result[0]
-        else:
-            return None
+        return None
 
     @commands.Cog.listener()
     async def on_guild_remove(self,guild):
@@ -727,7 +748,18 @@ class OwnerOnly(commands.Cog):
             await ctx.send(member.mention)
         await ctx.channel.purge(limit=51)
 
+    @commands.command()
+    async def guild_id(self,ctx):
+        await ctx.send(f"Guild id : {ctx.guild.id}")
 
+    @commands.command()
+    async def member_id(self,ctx,member:discord.Member=None):
+        member = member or ctx.author
+        await ctx.send(f"{member}'s ID : {member.id}")
+    
+    @commands.command()
+    async def cogs(self,ctx):
+        await ctx.send(" ".join(self.bot.cogs.keys()))
         
 @bot.command()
 async def echo(ctx,*,args):
@@ -736,10 +768,6 @@ async def echo(ctx,*,args):
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
-
-@bot.command()
-async def guild_id(ctx):
-    await ctx.send(ctx.guild.id)
 
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
@@ -750,5 +778,6 @@ bot.add_cog(Poll(bot))
 bot.add_cog(Logs(bot))
 bot.add_cog(CustomPrefixes(bot))
 bot.add_cog(OwnerOnly(bot))
+
 bot.run(TOKEN)
 
