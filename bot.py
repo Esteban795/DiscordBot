@@ -1,4 +1,4 @@
-from sqlite3 import dbapi2
+from aiohttp.helpers import CTL
 from dotenv import load_dotenv
 import discord
 import os
@@ -14,6 +14,7 @@ import re
 
 time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])")
 time_dict = {"h":3600, "s":1, "m":60, "d":86400}
+
 
 class TimeConverter(commands.Converter):
     async def convert(self, ctx, argument):
@@ -39,6 +40,47 @@ async def get_prefix(bot,message):
 
 load_dotenv()
 bot = commands.Bot(command_prefix=get_prefix,description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
+
+class MyHelp(commands.HelpCommand):
+    def get_command_signature(self, command):
+        return  f'{self.clean_prefix}{command.qualified_name} {command.signature}'
+
+    async def send_bot_help(self, mapping):
+        channel = self.get_destination()
+        embed = discord.Embed(title="The cavalry is here ! 🎺",color=0x03fcc6,timestamp=datetime.utcnow(),description="You asked for help, here I am.")
+        for cog, commands in mapping.items():
+            filtered = await self.filter_commands(commands, sort=True)
+            command_signatures = [self.get_command_signature(c) for c in filtered]
+            if command_signatures:
+                cog_name = getattr(cog, "qualified_name", "No Category")
+                embed.add_field(name=cog_name, value="\n".join(command_signatures), inline=False)
+        await channel.send(embed=embed)
+    
+    async def send_command_help(self, command):
+        channel = self.get_destination()
+        emby = discord.Embed(title="The cavalry is here ! 🎺",color=0x03fcc6,timestamp=datetime.utcnow(),description="You asked for help, here I am.")
+        emby.add_field(name="How to use this command : ",value=self.get_command_signature(command))
+        if len(command.aliases):
+            emby.add_field(name="Aliases you can use :",value=", ".join(command.aliases),inline=False)
+        emby.add_field(name="Cooldown : ",value=command.cooldown_after_parsing,inline=False)
+        await channel.send(embed=emby)
+    
+    async def send_group_help(self, group):
+        channel = self.get_destination()
+        emby = discord.Embed(title="The cavalry is here ! 🎺",color=0x03fcc6,timestamp=datetime.utcnow(),description="This command is actually a group.")
+        emby.add_field(name="Main command :",value=self.get_command_signature(group),inline=False)
+        emby.add_field(name="Subcommands : ",value="\n".join([self.get_command_signature(i) for i in group.commands]))
+        await channel.send(embed=emby)
+
+    async def send_cog_help(self, cog):
+        channel = self.get_destination()
+        emby = discord.Embed(title="The cavalry is here ! 🎺",color=0x03fcc6,timestamp=datetime.utcnow(),description=f"**{cog.qualified_name} category**")
+        filtered = await self.filter_commands(cog.get_commands(),sort=True)
+        command_signatures = [self.get_command_signature(c) for c in filtered]
+        emby.add_field(name="Commands : ",value="\n".join(command_signatures))
+        await channel.send(embed=emby)
+        
+bot.help_command= MyHelp()
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
 
 ydl_opts = {
@@ -49,11 +91,11 @@ ydl_opts = {
         'preferredquality':'256'
     }]
 }
+
 ffmpegopts = {
     'before_options': '-nostdin',
     'options': '-vn'
 }
-
 
 class ChuckNorris(commands.Cog):
     def __init__(self,bot):
@@ -119,7 +161,7 @@ class Moderation(commands.Cog):
 
     @commands.command(aliases=["gtfo"])
     @commands.has_permissions(kick_members = True)
-    async def kick(self,ctx, member: discord.Member, *,reason="Not specified."): # $kick [member] [reason]
+    async def kick(self,ctx, member: discord.Member, *,reason="Not specified."):
         PMembed = discord.Embed(title="Uh oh. Looks like you did something quite bad !",color=0xff0000)
         PMembed.add_field(name=f"You were kicked from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
         await member.send(embed=PMembed)
@@ -162,9 +204,10 @@ class Moderation(commands.Cog):
 
     @commands.command(aliases=["b","bna"])
     @commands.has_permissions(ban_members = True)
-    async def ban(self,ctx,member : discord.Member,time:str=None, *,reason="Not specified."): # $ban [member] [reason]
+    async def ban(self,ctx,member : discord.Member,time:TimeConverter=None, *,reason="Not specified."): # $ban [member] [reason]
         embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
         embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
+        embedVar.add_field(name="Time :",value=time if time is not None else "Infinite.",inline=False)
         embedVar.set_footer(text=f"Requested by {ctx.author}.")
         await member.send(embed=embedVar)
         await member.ban(reason=reason)
@@ -827,10 +870,6 @@ class OwnerOnly(commands.Cog):
     @commands.command()
     async def cogs(self,ctx):
         await ctx.send(" ".join(self.bot.cogs.keys()))
-        
-@bot.command()
-async def echo(ctx,*,args):
-    await ctx.send(args)
 
 @bot.event
 async def on_ready():
