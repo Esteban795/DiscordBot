@@ -1,4 +1,5 @@
-from aiohttp.helpers import CTL
+import typing
+from discord.ext.commands.errors import BadArgument
 from dotenv import load_dotenv
 import discord
 import os
@@ -10,7 +11,6 @@ import aiosqlite
 from difflib import get_close_matches
 from datetime import datetime
 import re
-
 
 time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])")
 time_dict = {"h":3600, "s":1, "m":60, "d":86400}
@@ -280,10 +280,30 @@ class Moderation(commands.Cog):
         embedVar.add_field(name="Here they are : ",value="\n".join(["• {}".format(i[0]) for i in member.guild_permissions if i[1] is True]))
         await ctx.author.send(embed=embedVar)
 
-    @commands.command(aliases=["clear","clearmsg"])
-    @commands.has_permissions(manage_messages = True) 
-    async def purge(self,ctx,Amount:int=2): #Delete "Amount" messages from the current channel. $purge [int]
-        await ctx.channel.purge(limit=Amount + 1)
+    @commands.group(invoke_without_command=True,name="purge")
+    async def _purge(self,ctx,Amount:int=2): #Delete "Amount" messages from the current channel. $purge [int]
+        if ctx.invoked_subcommand is None:
+            await ctx.channel.purge(limit=int(Amount) + 1)
+    
+    @_purge.command(name="bots")
+    async def _bots(self,ctx,amount:int=2):
+        guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
+        async for message in ctx.history(limit=amount+1):
+            if message.author.bot or message.content.startswith(guild_prefix):
+                await message.delete()
+    
+    @_purge.command()
+    async def botonly(selt,ctx,amount:int=2):
+        async for message in ctx.history(limit=amount):
+            if message.author.bot:
+                await message.delete()
+    
+    @_purge.command()
+    async def memberonly(self,ctx,amount:int=2):
+        guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
+        async for message in ctx.history(limit=amount):
+            if not (message.author.bot or message.content.startswith(guild_prefix)):
+                await message.delete()
 
 class Music(commands.Cog):
     def __init__(self,bot):
@@ -366,7 +386,35 @@ class Tags(commands.Cog):
                             return await ctx.send(f"I couldn't find anything close enough to '{tag_name}'. Try something else.")
                         else:
                             return await ctx.send(f"Tag '{tag_name}' not found. Maybe you meant :\n{matches}")
-                            
+    @tag.command()
+    async def all(self,ctx):
+        guild_id = f"_{ctx.guild.id}"
+        l = []
+        async with aiosqlite.connect("databases/tags.db") as db:
+            async with db.execute(f"SELECT * FROM {guild_id}") as cursor:
+                async for row in cursor:
+                    l.append(f"{row[0]} : {row[1]}")
+        if len(l) == 0:
+            return await ctx.send("No tags registered on this server.")
+        return await ctx.send("\n".join(l))
+    
+    @tag.command()
+    async def createdby(self,ctx,member:typing.Union[discord.Member,int]=None):
+        member = member or ctx.author
+        guild_id = f"_{ctx.guild.id}"
+        if member is int:
+            member_id = member
+        else:
+            member_id = member.id
+        l = []
+        async with aiosqlite.connect("databases/tags.db") as db:
+            async with db.execute(f"SELECT tag_name,description FROM {guild_id} WHERE creator_id = ?",(member_id,)) as cursor:
+                async for row in cursor:
+                    l.append(f"{row[0]} : {row[1]}")
+        if len(l) == 0:
+            return await ctx.send("This member doesn't own any tags !")
+        return await ctx.send("\n".join(l))
+        
     @tag.command()
     async def add(self,ctx,tag_name,*,description):
         guild_id = f"_{ctx.guild.id}"
@@ -430,6 +478,10 @@ class ErrorHandler(commands.Cog):
             return await ctx.send(error)
         elif isinstance(error,commands.NotOwner):
             await ctx.send("You must be the owner of this bot to perform this command. Please contact Esteban#7985 for more informations.")
+        elif isinstance(error,commands.BadArgument):
+            print(error.__dir__())
+            print(error.args)
+            await ctx.send(error)
         else:
             raise error
 
@@ -745,7 +797,10 @@ class CustomPrefixes(commands.Cog):
     @commands.group()
     async def prefix(self,ctx):
         if ctx.invoked_subcommand is None:
-            await ctx.send("Subcommand required.")
+            async with aiosqlite.connect("databases/main.db") as db:
+                cursor = await db.execute("SELECT custom_prefixes FROM prefixes WHERE guild_id = ?",(ctx.guild.id,))
+                result = await cursor.fetchone()
+        return await ctx.send(f"Custom prefixes for this discord server : {' '.join([i for i in result])}")
 
     @prefix.command()
     async def add(self,ctx,*,custom_prefixes):
@@ -869,11 +924,17 @@ class OwnerOnly(commands.Cog):
     
     @commands.command()
     async def cogs(self,ctx):
-        await ctx.send(" ".join(self.bot.cogs.keys()))
+        await ctx.send(", ".join(self.bot.cogs.keys()))
+
 
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
+
+@bot.command()
+async def echo(ctx,*,args):
+    await ctx.send(args)
+
 
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
