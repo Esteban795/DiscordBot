@@ -1,5 +1,4 @@
 import typing
-from discord.ext.commands.errors import BadArgument
 from dotenv import load_dotenv
 import discord
 import os
@@ -282,28 +281,52 @@ class Moderation(commands.Cog):
 
     @commands.group(invoke_without_command=True,name="purge")
     async def _purge(self,ctx,Amount:int=2): #Delete "Amount" messages from the current channel. $purge [int]
+        await ctx.message.delete()
         if ctx.invoked_subcommand is None:
-            await ctx.channel.purge(limit=int(Amount) + 1)
-    
-    @_purge.command(name="bots")
-    async def _bots(self,ctx,amount:int=2):
-        guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
-        async for message in ctx.history(limit=amount+1):
-            if message.author.bot or message.content.startswith(guild_prefix):
-                await message.delete()
+            await ctx.channel.purge(limit=int(Amount))
     
     @_purge.command()
-    async def botonly(selt,ctx,amount:int=2):
-        async for message in ctx.history(limit=amount):
-            if message.author.bot:
-                await message.delete()
+    async def commands(self,ctx,amount:int=2):
+        guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
+        await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot or m.content.startswith(guild_prefix))
     
     @_purge.command()
-    async def memberonly(self,ctx,amount:int=2):
+    async def bots(selt,ctx,amount:int=2):
+        await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot)
+    
+    @_purge.command()
+    async def humans(self,ctx,amount:int=2):
         guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
-        async for message in ctx.history(limit=amount):
-            if not (message.author.bot or message.content.startswith(guild_prefix)):
-                await message.delete()
+        await ctx.channel.purge(limit=amount,check=lambda m:not (m.author.bot or m.content.startswith(guild_prefix)))
+    
+    @_purge.command()
+    async def member(self,ctx,amount:int=2,member:discord.Member=None):
+        member = member or ctx.author
+        await ctx.channel.purge(limit=amount,check=lambda m:m.author == member)
+    
+    @_purge.command()
+    async def match(self,ctx,amount:int=2,*,content):
+        await ctx.channel.purge(limit=amount,check=lambda m:content in m.content)
+    
+    @_purge.command(name="not")
+    async def _not(self,ctx,amount:int=2,*,content):
+        await ctx.channel.purge(limit=amount,check=lambda m:not (content in m.content))
+    
+    @_purge.command()
+    async def startswith(self,ctx,amount:int=2,*,content):
+        await ctx.channel.purge(limit=amount,check=lambda m:m.content.startswith(content))
+    
+    @_purge.command()
+    async def endswith(self,ctx,amount:int=2,*,content):
+        await ctx.channel.purge(limit=amount,check=lambda m:m.content.endswith(content))
+    
+    @_purge.command()
+    async def embeds(self,ctx,amount:int=2):
+        await ctx.channel.purge(limit=amount,check=lambda m:len(m.embeds))
+    
+    @_purge.command()
+    async def images(self,ctx,amount:int=2):
+        await ctx.channel.purge(limit=amount,check=lambda m:len(m.attachments) or m.content.startswith(("https://cdn.discordapp.com/attachments/","https://tenor.com/view/")))
 
 class Music(commands.Cog):
     def __init__(self,bot):
@@ -479,8 +502,6 @@ class ErrorHandler(commands.Cog):
         elif isinstance(error,commands.NotOwner):
             await ctx.send("You must be the owner of this bot to perform this command. Please contact Esteban#7985 for more informations.")
         elif isinstance(error,commands.BadArgument):
-            print(error.__dir__())
-            print(error.args)
             await ctx.send(error)
         else:
             raise error
