@@ -1,4 +1,6 @@
+import functools
 import typing
+from discord.ext.commands.core import command
 from dotenv import load_dotenv
 import discord
 import os
@@ -10,11 +12,11 @@ import aiosqlite
 from difflib import get_close_matches
 from datetime import datetime
 import re
+from PIL import Image,ImageDraw,ImageFont
+from math import floor
 
 time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])")
 time_dict = {"h":3600, "s":1, "m":60, "d":86400}
-
-
 class TimeConverter(commands.Converter):
     async def convert(self, ctx, argument):
         matches = time_regex.findall(argument.lower())
@@ -289,10 +291,12 @@ class Moderation(commands.Cog):
     async def commands(self,ctx,amount:int=2):
         guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
         await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot or m.content.startswith(guild_prefix))
+
     
     @_purge.command()
     async def bots(selt,ctx,amount:int=2):
         await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot)
+        await ctx.message.delete()
     
     @_purge.command()
     async def humans(self,ctx,amount:int=2):
@@ -303,6 +307,7 @@ class Moderation(commands.Cog):
     async def member(self,ctx,amount:int=2,member:discord.Member=None):
         member = member or ctx.author
         await ctx.channel.purge(limit=amount,check=lambda m:m.author == member)
+        await ctx.message.delete()
     
     @_purge.command()
     async def match(self,ctx,amount:int=2,*,content):
@@ -311,22 +316,26 @@ class Moderation(commands.Cog):
     @_purge.command(name="not")
     async def _not(self,ctx,amount:int=2,*,content):
         await ctx.channel.purge(limit=amount,check=lambda m:not (content in m.content))
+        await ctx.message.delete()
     
     @_purge.command()
     async def startswith(self,ctx,amount:int=2,*,content):
         await ctx.channel.purge(limit=amount,check=lambda m:m.content.startswith(content))
+        await ctx.message.delete()
     
     @_purge.command()
     async def endswith(self,ctx,amount:int=2,*,content):
         await ctx.channel.purge(limit=amount,check=lambda m:m.content.endswith(content))
-    
+        
     @_purge.command()
     async def embeds(self,ctx,amount:int=2):
         await ctx.channel.purge(limit=amount,check=lambda m:len(m.embeds))
-    
+        await ctx.message.delete()
+
     @_purge.command()
     async def images(self,ctx,amount:int=2):
         await ctx.channel.purge(limit=amount,check=lambda m:len(m.attachments) or m.content.startswith(("https://cdn.discordapp.com/attachments/","https://tenor.com/view/")))
+        await ctx.message.delete()
 
 class Music(commands.Cog):
     def __init__(self,bot):
@@ -920,6 +929,90 @@ class CustomOnMessage(commands.Cog):
             await db.commit()
         await ctx.send(f"Just edited what '{trigger}' calls. Now calls '{message}' ! ")
 
+class XPSystem(commands.Cog):
+    def __init__(self,bot):
+        self.bot = bot
+        self._cd = commands.CooldownMapping.from_cooldown(1.0, 10.0, commands.BucketType.user)
+
+    def ratelimit_check(self, message):
+        bucket = self._cd.get_bucket(message)
+        return bucket.update_rate_limit()
+
+    @commands.Cog.listener()
+    async def on_guild_join(self,guild:discord.Guild):
+        async with aiosqlite.connect("databases/xp.db") as db:
+            await db.execute(f"CREATE TABLE _{guild.id}(member_id INT,current_xp INT,next_level_xp INT,current_level INT);")
+            await db.commit()
+    
+    @commands.Cog.listener()
+    async def on_guild_remove(self,guild):
+        async with aiosqlite.connect("databases/xp.db") as db:
+            await db.execute(f"DROP TABLE _{guild.id};")
+            await db.commit() 
+
+    @commands.Cog.listener()
+    async def on_message(self,message):
+        retry_after = self.ratelimit_check(message)
+        if message.author.bot:
+            return
+        if retry_after is None:
+            async with aiosqlite.connect("databases/xp.db") as db:
+                await db.execute(f"INSERT INTO _{message.guild.id} VALUES (?,3,0,1);",(message.author.id,))
+                await db.commit()
+
+    def xpcard(self,member_id,member_name,rank,level,xp,xp_level_suivant):
+        FNT_30 = ImageFont.truetype("fonts/universcondensed.ttf", 30)
+        FNT_25 = ImageFont.truetype("fonts/universcondensed.ttf", 25)
+        FNT_20 = ImageFont.truetype("fonts/universcondensed.ttf", 20)
+        avatar = Image.open(f'avatars/{member_id}_avatar.png').resize((125,125))
+
+        background_to_crop = Image.new("L", avatar.size,color=0)
+        im_rgba = avatar.copy()
+
+        draw = ImageDraw.Draw(background_to_crop)
+        draw.ellipse((0,0,125,125), fill=255)
+        im_rgba.putalpha(background_to_crop)
+        im_rgba_crop = im_rgba.crop((0,0,125,125))
+
+        icon = im_rgba_crop.resize((125,125))
+
+        img = Image.new("RGBA",(500,200),(70,70,70,255))
+        d = ImageDraw.Draw(img)
+
+        barre_xp = 200 + floor((xp/xp_level_suivant) * 175)
+        d.rounded_rectangle([20,20,480,180],fill=(255,255,255,128),radius=5)
+        d.rounded_rectangle([(200,130),(barre_xp ,150)],fill="red",radius=10)
+        d.rounded_rectangle([(200,130),(450,150)],radius=10,width=3,outline="black")
+        if len(member_name) > 12:
+            d.text((200,105),text=member_name,font=FNT_20,fill=(0,0,0))
+        else:
+            d.text((200,100),text=member_name,font=FNT_30,fill=(0,0,0))
+        d.text((370,25),text=f"Level : {level}",font=FNT_25,fill=(0,0,0))
+        d.text((370,50),text=f"Rank : #{rank}",font=FNT_25,fill=(0,0,0))
+        d.text((380,100),text=f"{xp}/{xp_level_suivant}xp",font=FNT_25,fill=(0,0,0))
+        img.paste(icon,(50,40),icon)
+        img.save(f"avatars/{member_id}_rank_card.png")
+
+    async def run_xp_card(self,member_id,member,rank,current_level,current_xp,next_level_xp):
+        t = functools.partial(self.xpcard,member_id,member,rank,current_level,current_xp,next_level_xp)
+        m = await bot.loop.run_in_executor(None,t)
+
+    @commands.command()
+    async def rank(self,ctx,member:discord.Member=None):
+        member = member or ctx.author
+        member_id = member.id
+        async with aiosqlite.connect("databases/xp.db") as db:
+            cursor = await db.execute("SELECT current_xp,next_level_xp,current_level FROM test WHERE member_id = ?",(member_id,))
+            result = await cursor.fetchone()
+            if result:
+                await member.avatar_url.save(f"avatars/{member_id}_avatar.png")
+                await self.run_xp_card(member_id,str(member),10,result[2],result[0],result[1])
+                await ctx.send(file=discord.File(f"avatars/{member_id}_rank_card.png"))
+                os.remove(f"avatars/{member_id}_avatar.png")
+                os.remove(f"avatars/{member_id}_rank_card.png")
+            else:
+                return await ctx.send("This member isn't in the database.")
+                
 class OwnerOnly(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
@@ -952,11 +1045,6 @@ class OwnerOnly(commands.Cog):
 async def on_ready():
     print(f'Logged as {bot.user.name}')
 
-@bot.command()
-async def echo(ctx,*,args):
-    await ctx.send(args)
-
-
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
 bot.add_cog(Music(bot))
@@ -967,6 +1055,6 @@ bot.add_cog(Logs(bot))
 bot.add_cog(CustomPrefixes(bot))
 bot.add_cog(OwnerOnly(bot))
 bot.add_cog(CustomOnMessage(bot))
-
+bot.add_cog(XPSystem(bot))
 bot.run(TOKEN)
 
