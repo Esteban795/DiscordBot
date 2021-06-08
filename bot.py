@@ -13,7 +13,7 @@ from difflib import get_close_matches
 from datetime import datetime
 import re
 from PIL import Image,ImageDraw,ImageFont
-from math import floor
+from math import floor,ceil
 
 time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])")
 time_dict = {"h":3600, "s":1, "m":60, "d":86400}
@@ -929,10 +929,14 @@ class CustomOnMessage(commands.Cog):
             await db.commit()
         await ctx.send(f"Just edited what '{trigger}' calls. Now calls '{message}' ! ")
 
+#Suite ag : 40*1.1**n - 30
 class XPSystem(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
         self._cd = commands.CooldownMapping.from_cooldown(1.0, 10.0, commands.BucketType.user)
+        self.suite1 = "40*1.1**"
+        self.suite2 = "-30"
+        self.u0 = 10
 
     def ratelimit_check(self, message):
         bucket = self._cd.get_bucket(message)
@@ -951,14 +955,43 @@ class XPSystem(commands.Cog):
             await db.commit() 
 
     @commands.Cog.listener()
+    async def on_member_remove(self,member):
+        table_name = f"_{member.guild.id}"
+        async with aiosqlite.connect("databases/xp.db") as db:
+            await db.execute(f"DELETE FROM {table_name} WHERE member_id = ?",(member.id,))
+            await db.commit()
+
+    @commands.Cog.listener()
     async def on_message(self,message):
         retry_after = self.ratelimit_check(message)
-        if message.author.bot:
+        guild_prefix = tuple(await get_prefix(self.bot,message))
+        if message.author.bot or message.content.startswith(guild_prefix):
             return
         if retry_after is None:
+            xp_won = 1 + ceil(min(len(message.content)//10,1) * 8)
+            table_name = f"_{message.guild.id}"
             async with aiosqlite.connect("databases/xp.db") as db:
-                await db.execute(f"INSERT INTO _{message.guild.id} VALUES (?,3,0,1);",(message.author.id,))
-                await db.commit()
+                cursor = await db.execute(f"SELECT current_xp,next_level_xp,current_level FROM {table_name} WHERE member_id = ?",(message.author.id,))
+                result = await cursor.fetchone()
+                if result:
+                    current_xp = result[0] + xp_won
+                    next_level_xp = result[1]
+                    current_level = result[2]
+                    if current_xp >= next_level_xp:
+                        while current_xp >= next_level_xp:
+                            current_xp -= next_level_xp
+                            next_level_xp = floor(eval("".join([self.suite1,str(current_level + 1),self.suite2])))
+                            current_level += 1
+                        await db.execute(f"UPDATE {table_name} SET current_xp = ?,next_level_xp = ?,current_level = ? WHERE member_id = ?",(current_xp,next_level_xp,current_level,message.author.id))
+                        await db.commit()
+                        await message.channel.send(f"{message.author.mention} vient de passer au niveau {current_level} ! ")
+                    else:
+                        await db.execute(f"UPDATE {table_name} SET current_xp = ? WHERE member_id = ?",(current_xp,message.author.id))
+                        await db.commit()
+                else:
+                    await db.execute(f"INSERT INTO {table_name} VALUES(?,?,?,0);",(message.author.id,xp_won,self.u0))
+                    await db.commit()
+
 
     def xpcard(self,member_id,member_name,rank,level,xp,xp_level_suivant):
         FNT_30 = ImageFont.truetype("fonts/universcondensed.ttf", 30)
@@ -968,7 +1001,6 @@ class XPSystem(commands.Cog):
 
         background_to_crop = Image.new("L", avatar.size,color=0)
         im_rgba = avatar.copy()
-
         draw = ImageDraw.Draw(background_to_crop)
         draw.ellipse((0,0,125,125), fill=255)
         im_rgba.putalpha(background_to_crop)
@@ -1001,8 +1033,9 @@ class XPSystem(commands.Cog):
     async def rank(self,ctx,member:discord.Member=None):
         member = member or ctx.author
         member_id = member.id
+        table_name = f"_{ctx.guild.id}"
         async with aiosqlite.connect("databases/xp.db") as db:
-            cursor = await db.execute("SELECT current_xp,next_level_xp,current_level FROM test WHERE member_id = ?",(member_id,))
+            cursor = await db.execute(f"SELECT current_xp,next_level_xp,current_level FROM {table_name} WHERE member_id = ?",(member_id,))
             result = await cursor.fetchone()
             if result:
                 await member.avatar_url.save(f"avatars/{member_id}_avatar.png")
