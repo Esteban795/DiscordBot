@@ -1,5 +1,7 @@
 import functools
+from threading import currentThread
 import typing
+from discord.gateway import DiscordClientWebSocketResponse
 from dotenv import load_dotenv
 import discord
 import os
@@ -142,6 +144,16 @@ class Moderation(commands.Cog):
         mutedRole = await guild.create_role(name="Muted",permissions=discord.Permissions(send_messages=False,speak=False))
         for channel in guild.channels:
             await channel.set_permissions(mutedRole, send_messages = False, speak = False)
+        async with aiosqlite.connect("databases/warns.db") as db:
+            await db.execute(f"CREATE TABLE IF NOT EXISTS _{guild.id}(member_id INT,nb_warnings INT)")
+            await db.execute(f"INSERT INTO _{guild.id} VALUES(0,5);")
+            await db.commit()
+    
+    @commands.Cog.listener()
+    async def on_guild_remove(self,guild:discord.Guild):
+        async with aiosqlite.connect("databases/warns.db") as db:
+            await db.execute(f"DROP TABLE _{guild.id}")
+            await db.commit()
     
     @commands.command(aliases=["addrole","roleadd"])
     @commands.has_permissions(manage_roles=True)
@@ -286,6 +298,46 @@ class Moderation(commands.Cog):
         embedVar.add_field(name="Here they are : ",value="\n".join(["• {}".format(i[0]) for i in member.guild_permissions if i[1] is True]))
         await ctx.author.send(embed=embedVar)
 
+    @commands.group(invoke_without_command=True)
+    async def warn(self,ctx,member:discord.Member,*,reason=None):
+        if ctx.invoked_subcommand is None:
+            table_name = f"_{ctx.guild.id}"
+            async with aiosqlite.connect("databases/warns.db") as db:
+                cursor =  await db.execute(f"SELECT nb_warnings FROM {table_name}  WHERE member_id = ?",(member.id,))
+                result = await cursor.fetchone()
+                number_of_warns_allowed = await db.execute(f"SELECT nb_warnings FROM {table_name} WHERE member_id = 0;")
+                res = await number_of_warns_allowed.fetchone()
+                if result:
+                    new_warns_number = result[0] + 1
+                    if new_warns_number >= int(res[0]):
+                        await db.execute(f"DELETE FROM {table_name} WHERE member_id = ?;",(member.id,))
+                        await db.commit()
+                        await member.kick(reason=reason)
+                        await ctx.send(f"{member} was kicked due to too many warns !")
+
+                    else:
+                        await db.execute(f"UPDATE {table_name} SET nb_warnings = ? WHERE member_id = ?",(new_warns_number,member.id))
+                        await db.commit()
+                else:
+                    await db.execute(f"INSERT INTO {table_name} VALUES(?,1);",(member.id,))
+                    await db.commit()
+    
+    @warn.command()
+    async def change(self,ctx,amount:int):
+        table_name =  f"_{ctx.guild.id}"
+        async with aiosqlite.connect("databases/warns.db") as db:
+            cursor = await db.execute(f"SELECT nb_warnings FROM {table_name} WHERE member_id = 0;")
+            res = await cursor.fetchone()
+            try:
+                await ctx.send(f"Currently, {res[0]} warning(s) gets you auto-kicked. Are you sure you want to change that to {amount} ?")
+                confirm = await self.bot.wait_for("message",check=lambda m:m.author == ctx.author and m.channel == ctx.channel,timeout=15)
+            except asyncio.TimeoutError:
+                await ctx.send("You didn't answer fast enough. Aborting mission !")
+            else:
+                if confirm.content.lower() == "yes":
+                    await db.execute(f"UPDATE {table_name} SET nb_warnings = ? WHERE member_id = 0;",(amount,))
+                    await db.commit()
+
     @commands.command(aliases=["sb"])
     async def softban(self,ctx,member:discord.Member,*,reason):
         await member.ban(reason=reason)
@@ -347,6 +399,9 @@ class Moderation(commands.Cog):
         await ctx.channel.purge(limit=amount,check=lambda m:len(m.attachments) or m.content.startswith(("https://cdn.discordapp.com/attachments/","https://tenor.com/view/")))
         await ctx.message.delete()
 
+
+
+            
 class Music(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
