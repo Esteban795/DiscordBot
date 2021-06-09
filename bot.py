@@ -1,6 +1,5 @@
 import functools
 import typing
-from discord.ext.commands.core import command
 from dotenv import load_dotenv
 import discord
 import os
@@ -203,18 +202,24 @@ class Moderation(commands.Cog):
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
 
-    @commands.command(aliases=["b","bna"])
+    @commands.group(aliases=["b","bna"])
     @commands.has_permissions(ban_members = True)
     async def ban(self,ctx,member : discord.Member,time:TimeConverter=None, *,reason="Not specified."): # $ban [member] [reason]
-        embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
-        embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
-        embedVar.add_field(name="Time :",value=time if time is not None else "Infinite.",inline=False)
-        embedVar.set_footer(text=f"Requested by {ctx.author}.")
-        await member.send(embed=embedVar)
-        await member.ban(reason=reason)
-        if time is not None:
-            await asyncio.sleep(int(time))
-            await ctx.guild.unban(member,reason="Ban duration is over.")
+        if ctx.invoked_subcommand is None:
+            embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
+            embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
+            embedVar.add_field(name="Time :",value=time if time is not None else "Infinite.",inline=False)
+            embedVar.set_footer(text=f"Requested by {ctx.author}.")
+            await member.send(embed=embedVar)
+            await member.ban(reason=reason)
+            if time is not None:
+                await asyncio.sleep(int(time))
+                await ctx.guild.unban(member,reason="Ban duration is over.")
+
+    @ban.command()
+    async def match(self,ctx,member:discord.Member,time:TimeConverter=None,*,reason="Not specified."):
+        pass
+
 
     @commands.command(aliases=["u","unbna"])
     @commands.has_permissions(ban_members = True)
@@ -281,6 +286,12 @@ class Moderation(commands.Cog):
         embedVar.add_field(name="Here they are : ",value="\n".join(["• {}".format(i[0]) for i in member.guild_permissions if i[1] is True]))
         await ctx.author.send(embed=embedVar)
 
+    @commands.command(aliases=["sb"])
+    async def softban(self,ctx,member:discord.Member,*,reason):
+        await member.ban(reason=reason)
+        await member.unban(reason="Softban.")
+        await ctx.send(f"{member} was softbanned.")
+
     @commands.group(invoke_without_command=True,name="purge")
     async def _purge(self,ctx,Amount:int=2): #Delete "Amount" messages from the current channel. $purge [int]
         await ctx.message.delete()
@@ -291,8 +302,7 @@ class Moderation(commands.Cog):
     async def commands(self,ctx,amount:int=2):
         guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
         await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot or m.content.startswith(guild_prefix))
-
-    
+ 
     @_purge.command()
     async def bots(selt,ctx,amount:int=2):
         await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot)
@@ -1044,8 +1054,55 @@ class XPSystem(commands.Cog):
                 os.remove(f"avatars/{member_id}_avatar.png")
                 os.remove(f"avatars/{member_id}_rank_card.png")
             else:
-                return await ctx.send("This member isn't in the database.")
-                
+                return await ctx.send("This member never spoke in the chat. How scary it is. Or they spoke in a channel I don't have access to. Either way, this ain't cool.")
+
+    @commands.command(aliases=["levels"])
+    async def ranking(self,ctx):
+        l = []
+        table_name = f"_{ctx.guild.id}"
+        async with aiosqlite.connect("databases/xp.db") as db:
+            async with db.execute(f"SELECT member_id,current_level FROM {table_name} ORDER BY current_level DESC,current_xp DESC;") as cursor:
+                async for row in cursor:
+                    member = ctx.guild.get_member(row[0])
+                    l.append(f"• {member}. Level : {row[1]}")
+        embed = discord.Embed(title=f"{ctx.guild}'s ranking".capitalize(),color=0x03fcc6,timestamp=datetime.utcnow(),description="\n".join(l))
+        await ctx.send(embed=embed)
+
+    @commands.group()
+    @commands.has_permissions(administrator=True)
+    async def reset(self,ctx):
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Subcommand required.")
+
+    @reset.command()
+    async def all(self,ctx):
+        try:
+            await ctx.send("This will delete E.V.E.R.Y existing datas about your rank. No backup possible ! Type 'yes' to continue.")
+            confirm = await self.bot.wait_for("message",check=lambda m: m.author == ctx.author and m.channel == ctx.channel,timeout=10)
+        except asyncio.TimeoutError:
+            await ctx.send("You didn't answer fast enough. Aborting mission !")
+        else:
+            if confirm.content.lower() == "yes":
+                table_name = f"_{ctx.guild.id}"
+                async with aiosqlite.connect("databases/xp.db") as db:
+                    await db.execute(f"DELETE FROM {table_name};")
+                    await db.commit()
+    
+    @reset.command()
+    async def member(self,ctx,member:discord.Member=None):
+        member = member or ctx.author
+        try:
+            await ctx.send(f"This will reset {member} levels. No backup possible ! Type 'yes' to continue.")
+            confirm = await self.bot.wait_for("message",check=lambda m: m.author == ctx.author and m.channel == ctx.channel,timeout=10)
+        except asyncio.TimeoutError:
+            await ctx.send("You didn't answer fast enough. Aborting mission !")
+        else:
+            if confirm.content.lower() == "yes":
+                table_name = f"_{ctx.guild.id}"
+                async with aiosqlite.connect("databases/xp.db") as db:
+                    await db.execute(f"DELETE FROM {table_name} WHERE member_id = ?;",(member.id,))
+                    await db.commit()
+
 class OwnerOnly(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
@@ -1077,6 +1134,7 @@ class OwnerOnly(commands.Cog):
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
+
 
 bot.add_cog(ChuckNorris(bot))
 bot.add_cog(Moderation(bot))
