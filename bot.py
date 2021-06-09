@@ -1,7 +1,5 @@
 import functools
-from threading import currentThread
 import typing
-from discord.gateway import DiscordClientWebSocketResponse
 from dotenv import load_dotenv
 import discord
 import os
