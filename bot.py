@@ -1,5 +1,7 @@
 import functools
 import typing
+from discord.errors import ClientException
+from discord.gateway import DiscordClientWebSocketResponse
 from dotenv import load_dotenv
 import discord
 import os
@@ -133,6 +135,19 @@ class Moderation(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
     
+    async def bot_check(self, ctx):
+        if ctx.command is not None:
+            async with aiosqlite.connect("databases/main.db") as db:
+                cursor = await db.execute("SELECT * FROM ignored_channels WHERE channel_id = ?",(ctx.channel.id,))
+                res = await cursor.fetchone()
+            if res:
+                is_channel_ignored = True
+            else:
+                is_channel_ignored = False
+            if is_channel_ignored:
+                raise commands.DisabledCommand("You can't use commands in this channel.")
+            return True
+
     @commands.Cog.listener()
     async def on_guild_join(self,guild:discord.Guild):
         """Create the role muted as soon as the bot joins the guild, if no muted role exists. Disable send messages permissions and speak permissions for muted role in every channel"""
@@ -145,6 +160,9 @@ class Moderation(commands.Cog):
         async with aiosqlite.connect("databases/warns.db") as db:
             await db.execute(f"CREATE TABLE IF NOT EXISTS _{guild.id}(member_id INT,nb_warnings INT)")
             await db.execute(f"INSERT INTO _{guild.id} VALUES(0,5);")
+            await db.commit()
+        async with aiosqlite.connect("databases/main.db"):
+            await db.execute(f"CREATE TABLE IF NOT EXISTS ignored_{guild.id}_members(member_id INT)")
             await db.commit()
     
     @commands.Cog.listener()
@@ -214,22 +232,49 @@ class Moderation(commands.Cog):
 
     @commands.group(aliases=["b","bna"])
     @commands.has_permissions(ban_members = True)
-    async def ban(self,ctx,member : discord.Member,time:TimeConverter=None, *,reason="Not specified."): # $ban [member] [reason]
+    async def ban(self,ctx,member : discord.Member,*,reason="Not specified."): # $ban [member] [reason]
         if ctx.invoked_subcommand is None:
             embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
             embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
-            embedVar.add_field(name="Time :",value=time if time is not None else "Infinite.",inline=False)
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await member.send(embed=embedVar)
             await member.ban(reason=reason)
-            if time is not None:
-                await asyncio.sleep(int(time))
-                await ctx.guild.unban(member,reason="Ban duration is over.")
+
 
     @ban.command()
-    async def match(self,ctx,member:discord.Member,time:TimeConverter=None,*,reason="Not specified."):
-        pass
+    async def match(self,ctx,member:discord.Member,r,*,words):
+        async for message in ctx.channel.history(limit=100):
+            if words in message.content:
+                embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
+                embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {r}")
+                embedVar.set_footer(text=f"Requested by {ctx.author}.")
+                await member.send(embed=embedVar)
+                await member.ban(reason=r)
+                await message.author.ban(reason="Bad word.")
 
+    @ban.group()
+    async def time(self,ctx,member:discord.Member,time:TimeConverter,*,reason="Not specified."):
+        if ctx.invoked_subcommand is None:
+            embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
+            embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
+            embedVar.set_footer(text=f"Requested by {ctx.author}.")
+            await member.send(embed=embedVar)
+            await member.ban(reason=reason)
+            await asyncio.sleep(time)
+            await member.unban(reason="Ban duration ended.")
+    
+    @time.group()
+    async def match(self,ctx,member:discord.Member,time:TimeConverter,r,*,words):   
+        async for message in ctx.channel.history(limit=100):
+            if words in message.content:
+                embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
+                embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {r}")
+                embedVar.set_footer(text=f"Requested by {ctx.author}.")
+                await member.send(embed=embedVar)
+                await member.ban(reason=r)
+                await message.author.ban(reason="Bad word.")
+                await asyncio.sleep(time)
+                await member.unban(reason="Ban duration is over.")
 
     @commands.command(aliases=["u","unbna"])
     @commands.has_permissions(ban_members = True)
@@ -321,7 +366,7 @@ class Moderation(commands.Cog):
                     await db.commit()
     
     @warn.command()
-    async def change(self,ctx,amount:int):
+    async def changenumber(self,ctx,amount:int):
         table_name =  f"_{ctx.guild.id}"
         async with aiosqlite.connect("databases/warns.db") as db:
             cursor = await db.execute(f"SELECT nb_warnings FROM {table_name} WHERE member_id = 0;")
@@ -342,61 +387,86 @@ class Moderation(commands.Cog):
         await member.unban(reason="Softban.")
         await ctx.send(f"{member} was softbanned.")
 
+    @commands.group()
+    async def ignore(self,ctx):
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use the 'member' or 'channel' subcommand to specify who shouldn't be allowed to use a command, or where people won't be allowed to use those beautiful commands !")
+    
+    @ignore.command()
+    async def channel(self,ctx,channel:discord.TextChannel):
+        async with aiosqlite.connect("databases/main.db") as db:
+            cursor = await db.execute("SELECT channel_id FROM ignored_channels WHERE channel_id = ?",(channel.id,))
+            result = await cursor.fetchone()
+            if result:
+                await ctx.send("This channel is already ignored. Type 'yes' if you want people to be able to use commands there !")
+                try:
+                    answer = await self.bot.wait_for("message",check=lambda m: m.author == ctx.author and m.channel == ctx.channel,timeout=10)
+                except asyncio.TimeoutError:
+                    await ctx.send("You didn't answer fast enough. Aborting the process !")
+                else:
+                    await db.execute("DELETE FROM ignored_channels WHERE channel_id = ?",(channel.id,))
+                    await db.commit()
+                    await ctx.send(f"{channel.mention} now has enabled commands !")
+            else:
+                await db.execute("INSERT INTO ignored_channels VALUES(?);",(channel.id,))
+                await db.commit()
+                await ctx.send(f"{channel.mention} now has disabled commands !")
+
+
     @commands.group(invoke_without_command=True,name="purge")
-    async def _purge(self,ctx,Amount:int=2): #Delete "Amount" messages from the current channel. $purge [int]
+    async def purge(self,ctx,Amount:int=2): #Delete "Amount" messages from the current channel. $purge [int]
         await ctx.message.delete()
         if ctx.invoked_subcommand is None:
             await ctx.channel.purge(limit=int(Amount))
     
-    @_purge.command()
+    @purge.command()
     async def commands(self,ctx,amount:int=2):
         guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
         await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot or m.content.startswith(guild_prefix))
  
-    @_purge.command()
+    @purge.command()
     async def bots(selt,ctx,amount:int=2):
         await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot)
         await ctx.message.delete()
     
-    @_purge.command()
+    @purge.command()
     async def humans(self,ctx,amount:int=2):
         guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
         await ctx.channel.purge(limit=amount,check=lambda m:not (m.author.bot or m.content.startswith(guild_prefix)))
     
-    @_purge.command()
+    @purge.command()
     async def member(self,ctx,amount:int=2,member:discord.Member=None):
         member = member or ctx.author
         await ctx.channel.purge(limit=amount,check=lambda m:m.author == member)
         await ctx.message.delete()
     
-    @_purge.command()
+    @purge.command()
     async def match(self,ctx,amount:int=2,*,content):
         await ctx.channel.purge(limit=amount,check=lambda m:content in m.content)
     
-    @_purge.command(name="not")
+    @purge.command(name="not")
     async def _not(self,ctx,amount:int=2,*,content):
         await ctx.channel.purge(limit=amount,check=lambda m:not (content in m.content))
         await ctx.message.delete()
     
-    @_purge.command()
+    @purge.command()
     async def startswith(self,ctx,amount:int=2,*,content):
         await ctx.channel.purge(limit=amount,check=lambda m:m.content.startswith(content))
         await ctx.message.delete()
     
-    @_purge.command()
+    @purge.command()
     async def endswith(self,ctx,amount:int=2,*,content):
         await ctx.channel.purge(limit=amount,check=lambda m:m.content.endswith(content))
         
-    @_purge.command()
+    @purge.command()
     async def embeds(self,ctx,amount:int=2):
         await ctx.channel.purge(limit=amount,check=lambda m:len(m.embeds))
         await ctx.message.delete()
 
-    @_purge.command()
+    @purge.command()
     async def images(self,ctx,amount:int=2):
         await ctx.channel.purge(limit=amount,check=lambda m:len(m.attachments) or m.content.startswith(("https://cdn.discordapp.com/attachments/","https://tenor.com/view/")))
         await ctx.message.delete()
-
 
 
             
@@ -574,6 +644,8 @@ class ErrorHandler(commands.Cog):
         elif isinstance(error,commands.NotOwner):
             await ctx.send("You must be the owner of this bot to perform this command. Please contact Esteban#7985 for more informations.")
         elif isinstance(error,commands.BadArgument):
+            await ctx.send(error)
+        elif isinstance(error,commands.DisabledCommand):
             await ctx.send(error)
         else:
             raise error
@@ -1187,6 +1259,10 @@ class OwnerOnly(commands.Cog):
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
+
+@bot.command()
+async def echo(ctx,*,args):
+    await ctx.send(args)
 
 
 bot.add_cog(ChuckNorris(bot))
