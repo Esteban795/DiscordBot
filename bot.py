@@ -1,7 +1,5 @@
 import functools
 import typing
-from discord.errors import ClientException
-from discord.gateway import DiscordClientWebSocketResponse
 from dotenv import load_dotenv
 import discord
 import os
@@ -16,8 +14,9 @@ import re
 from PIL import Image,ImageDraw,ImageFont
 from math import floor,ceil
 
-time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])")
+time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])") #Detects patterns like "12d","10m"
 time_dict = {"h":3600, "s":1, "m":60, "d":86400}
+
 class TimeConverter(commands.Converter):
     async def convert(self, ctx, argument):
         matches = time_regex.findall(argument.lower())
@@ -32,6 +31,9 @@ class TimeConverter(commands.Converter):
         return time
 
 async def get_prefix(bot,message):
+    """A callable that allows us to register custom prefixes"""
+    if not message.guild:
+        return "$"
     async with aiosqlite.connect("databases/main.db") as db:
         async with db.execute("SELECT custom_prefixes FROM prefixes WHERE guild_id = (?);",(message.guild.id,)) as cursor:
             result = await cursor.fetchone()
@@ -45,13 +47,14 @@ bot = commands.Bot(command_prefix=get_prefix,description="A Chuck Norris dedicat
 
 class MyHelp(commands.HelpCommand):
     def get_command_signature(self, command):
-        return  f'{self.clean_prefix}{command.qualified_name} {command.signature}'
+        return  f'• `{self.clean_prefix}{command.qualified_name} {command.signature}`'
 
     async def send_bot_help(self, mapping):
-        channel = self.get_destination()
+        """Sends the bot help embed. This actually reveals every command registered in"""
+        channel = self.get_destination() #Is ctx.channel
         embed = discord.Embed(title="The cavalry is here ! 🎺",color=0x03fcc6,timestamp=datetime.utcnow(),description="You asked for help, here I am.")
-        for cog, commands in mapping.items():
-            filtered = await self.filter_commands(commands, sort=True)
+        for cog, commands in mapping.items(): #Iterate through every command cog and command registered (cog,[commands in the cog])
+            filtered = await self.filter_commands(commands, sort=True) #Sort commands alphabetically
             command_signatures = [self.get_command_signature(c) for c in filtered]
             if command_signatures:
                 cog_name = getattr(cog, "qualified_name", "No Category")
@@ -59,6 +62,7 @@ class MyHelp(commands.HelpCommand):
         await channel.send(embed=embed)
     
     async def send_command_help(self, command):
+        """Sends help for a specific command. This shows how you can use it. Example : $help kick will return $kick [member] (reason)"""
         channel = self.get_destination()
         emby = discord.Embed(title="The cavalry is here ! 🎺",color=0x03fcc6,timestamp=datetime.utcnow(),description="You asked for help, here I am.")
         emby.add_field(name="How to use this command : ",value=self.get_command_signature(command))
@@ -68,8 +72,9 @@ class MyHelp(commands.HelpCommand):
         await channel.send(embed=emby)
     
     async def send_group_help(self, group):
+        """Sends help for a group of command. Specify a subcommand to get help from it too. Example : $help tags will show you $tag add, $tag remove etc"""
         channel = self.get_destination()
-        emby = discord.Embed(title="The cavalry is here ! 🎺",color=0x03fcc6,timestamp=datetime.utcnow(),description="This command is actually a group.")
+        emby = discord.Embed(title="The cavalry is here ! 🎺",color=0x03fcc6,timestamp=datetime.utcnow(),description="This command is actually a GROUP of command. Such awesome.")
         emby.add_field(name="Main command :",value=self.get_command_signature(group),inline=False)
         emby.add_field(name="Subcommands : ",value="\n".join([self.get_command_signature(i) for i in group.commands]))
         await channel.send(embed=emby)
@@ -82,7 +87,7 @@ class MyHelp(commands.HelpCommand):
         emby.add_field(name="Commands : ",value="\n".join(command_signatures))
         await channel.send(embed=emby)
         
-bot.help_command= MyHelp()
+bot.help_command= MyHelp() #A custom help command.
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
 
 ydl_opts = {
@@ -93,7 +98,6 @@ ydl_opts = {
         'preferredquality':'256'
     }]
 }
-
 ffmpegopts = {
     'before_options': '-nostdin',
     'options': '-vn'
@@ -104,20 +108,21 @@ class ChuckNorris(commands.Cog):
         self.bot = bot
 
     @commands.command(aliases=["cn","nc"])
-    async def chucknorris(self,ctx,*args):#chuck norris joke will be send to the channel
+    async def chucknorris(self,ctx,*args):
+        """Use this to get the best Chuck Norris jokes. Usage : $chucknorris (a category, available with cncategories)"""
         l = len(args)
         try:
             if l > 0:
-                r = requests.get(f"https://api.chucknorris.io/jokes/random?category={args[0].lower()}")
+                r = requests.get(f"https://api.chucknorris.io/jokes/random?category={args[0].lower()}") #Request to the API I'm using with a specific category
             else:
-                r = requests.get("https://api.chucknorris.io/jokes/random")
+                r = requests.get("https://api.chucknorris.io/jokes/random") #Request to the API I'm using,random joke this time
             joke = r.json()["value"]
             categories = ",".join(r.json()["categories"]) if len(r.json()["categories"]) > 0 else "None"
             embedVar = discord.Embed(title=f"Categories : {categories}.",color=0xaaffaa)
             embedVar.add_field(name="This joke is provided to you by : Chuck Norris himself.",value=f"{joke}")
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
-        except KeyError:
+        except KeyError: #Means the category doesn't exist on the API.
             embedVar = discord.Embed(title=f'There are no such categories as "{args[0]}".',color=0xff0000)
             embedVar.add_field(name="Don't try to fool me, I'll know it.",value="I'm also telling Chuck Norris about this. Watch your back.")
             embedVar.set_image(url="https://voi.img.pmdstatic.net/fit/http.3A.2F.2Fprd2-bone-image.2Es3-website-eu-west-1.2Eamazonaws.2Ecom.2Fvoi.2Fvar.2Fvoi.2Fstorage.2Fimages.2Fmedia.2Fmultiupload-du-25-juillet-2013.2Fchuck-norris-pl.2F8633422-1-fre-FR.2Fchuck-norris-pl.2Ejpg/460x258/quality/80/chuck-norris-vend-la-maison-qui-a-servi-de-decor-a-walker-texas-ranger.jpg")
@@ -126,6 +131,7 @@ class ChuckNorris(commands.Cog):
     
     @commands.command(aliases=["cncat","cnc","cncategoires"])
     async def cncategories(self,ctx):
+        """List the categories available from the API"""
         embedVar = discord.Embed(title="The categories of joke the bot can tell you.",color=0xaaffaa)
         r = requests.get("https://api.chucknorris.io/jokes/categories")
         embedVar.add_field(name="Pick your favourite ! ",value="\n".join(["• {}".format(i) for i in r.json()]))
@@ -136,6 +142,7 @@ class Moderation(commands.Cog):
         self.bot = bot
     
     async def bot_check(self, ctx):
+        """Checks if the message calls a command. If the channel is disabled or the member is banned from using commands, this will raise an error"""
         if ctx.command is not None:
             async with aiosqlite.connect("databases/main.db") as db:
                 cursor = await db.execute("SELECT * FROM ignored_channels WHERE channel_id = ?",(ctx.channel.id,))
@@ -147,6 +154,8 @@ class Moderation(commands.Cog):
             if is_channel_ignored:
                 raise commands.DisabledCommand("You can't use commands in this channel.")
             return True
+        elif not ctx.guild:
+            raise commands.NoPrivateMessage("I can't be used in DM. Please, use this command in another channel.")
 
     @commands.Cog.listener()
     async def on_guild_join(self,guild:discord.Guild):
@@ -167,13 +176,15 @@ class Moderation(commands.Cog):
     
     @commands.Cog.listener()
     async def on_guild_remove(self,guild:discord.Guild):
+        """When the bot leaves/gets kicked from a guild, no needs to store the warns since they are server dependent"""
         async with aiosqlite.connect("databases/warns.db") as db:
             await db.execute(f"DROP TABLE _{guild.id}")
             await db.commit()
     
     @commands.command(aliases=["addrole","roleadd"])
-    @commands.has_permissions(manage_roles=True)
+    @commands.has_permissions(manage_roles=True) #Check if the member of this guild has the permissions to manage roles.
     async def giverole(self,ctx,member:discord.Member,role:discord.Role):
+        """Gives the member you mentionned a role"""
         await member.add_roles(role)
         embedVar = discord.Embed(description=f"{member} was granted the {role} role.",color=0xaaffaa)
         embedVar.set_footer(text=f"Requested by {ctx.author}.")
@@ -181,7 +192,8 @@ class Moderation(commands.Cog):
 
     @commands.command(aliases=["rmvrole"])
     @commands.has_permissions(manage_roles = True)
-    async def removerole(self,ctx,member : discord.Member, role:discord.Role): # $removerole [member] [role]
+    async def removerole(self,ctx,member : discord.Member, role:discord.Role):
+        """Removes a role from the member you mentionned""" 
         await member.remove_roles(role)
         embedVar = discord.Embed(description=f"{member} lost the {role} role.",color=0xaaffaa)
         embedVar.set_footer(text=f"Requested by {ctx.author}.")
@@ -190,36 +202,40 @@ class Moderation(commands.Cog):
     @commands.command(aliases=["gtfo"])
     @commands.has_permissions(kick_members = True)
     async def kick(self,ctx, member: discord.Member, *,reason="Not specified."):
+        """Sends [member] a DM telling them they got kicked from the server you're in with the reason (if you told one)"""
         PMembed = discord.Embed(title="Uh oh. Looks like you did something quite bad !",color=0xff0000)
         PMembed.add_field(name=f"You were kicked from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
         await member.send(embed=PMembed)
         await member.kick(reason=reason)
-        embedVar = discord.Embed(description=f"{member} was successfully kicked from the server.",color=0xaaffaa)
+        embedVar = discord.Embed(description=f"{member} was successfully kicked from the server.",color=0xaaffaa) #Confirms everything went okay
         embedVar.set_footer(text=f"Requested by {ctx.author}.")
         await ctx.send(embed=embedVar)
 
     @commands.command()
     @commands.has_permissions()
     async def mute(self,ctx,member:discord.Member,time:TimeConverter=None):
-        mutedRole = discord.utils.get(ctx.guild.roles,name="Muted")
+        """Gives [member] the Muted role (they can't speak or write) for (time) if you specified one. After the mute duration is over, it automatically demutes them"""
+        mutedRole = discord.utils.get(ctx.guild.roles,name="Muted") #Get the discord.Role instance
         if mutedRole:
             await member.add_roles(mutedRole)
             await ctx.send(("Muted {} for {}s" if time else "Muted {}").format(member, time))
             if time:
-                await asyncio.sleep(time)
+                await asyncio.sleep(time) #Sleeps without blocking the bot code.
                 await member.remove_roles(mutedRole)
     
     @commands.command(aliases=["demute"])
     @commands.has_permissions()
     async def unmute(self,ctx,user:discord.Member):
-        mutedRole = [role for role in ctx.guild.roles if role.name == "Muted"][0]
+        """Removes the Muted role from the member. They now have the permission to speak/write"""
+        mutedRole = discord.utils.get(ctx.guild.roles,name="Muted") 
         await user.remove_roles(mutedRole)
 
     @commands.command(aliases=["banl","bl"])
     @commands.has_permissions(administrator = True)
-    async def banlist(self,ctx): #Displays current banlist from the server
+    async def banlist(self,ctx):
+        """Sends the current banlist from this server""" 
         bans = await ctx.guild.bans()
-        if len(bans) == 0:
+        if len(bans) == 0: #Are there members banned from this server ?
             embedVar = discord.Embed(title="Uh oh. Looks like no one is banned on this server. Those are good news !",color=0xaaffaa)
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
@@ -230,29 +246,42 @@ class Moderation(commands.Cog):
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
 
-    @commands.group(aliases=["b","bna"])
+    @commands.group(invoke_without_command=True)
     @commands.has_permissions(ban_members = True)
-    async def ban(self,ctx,member : discord.Member,*,reason="Not specified."): # $ban [member] [reason]
-        if ctx.invoked_subcommand is None:
+    async def ban(self,ctx,member:discord.Member,*,reason="Not specified."):
+        """Bans a member from the server. This is a group, which means you CAN use subcommands for more specific ban options. 
+        The current command just bans a member from the server, and sends them a DM with the reason they got banned"""
+        if ctx.invoked_subcommand is None: #Check if a subcommand is passed in.
             embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
             embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await member.send(embed=embedVar)
             await member.ban(reason=reason)
 
-
     @ban.command()
-    async def match(self,ctx,member:discord.Member,r,*,words):
-        async for message in ctx.channel.history(limit=100):
-            if words in message.content:
-                embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
-                embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {r}")
-                embedVar.set_footer(text=f"Requested by {ctx.author}.")
-                await member.send(embed=embedVar)
-                await member.ban(reason=r)
-                await message.author.ban(reason="Bad word.")
+    async def match(ctx,r,*,words):
+        """Bans every member that said [words] in the last 100 messages of this channel. Reason must be quoted if it isn't a single word"""
+        banned_words = words.split(" ")
+        last_100_messages = await ctx.channel.history(limit=123).flatten()
+        count = 0
+        for message in last_100_messages:
+            if message.author == ctx.author or message.author.bot:
+                continue
+            for word in banned_words:
+                if word in message.content:
+                    embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
+                    embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {r}")
+                    embedVar.set_footer(text=f"Requested by {ctx.author}.")
+                    await message.author.send(embed=embedVar)
+                    await message.author.ban(reason=reason)
+                    count += 1
+                    break
+        if count:
+            await ctx.send((f'Done ! I banned {count} people.' if count > 1 else "Done ! I banned one person."))
+        else:
+            await ctx.send("No one said those awful words.")
 
-    @ban.group()
+    @ban.group(invoke_without_command=True)
     async def time(self,ctx,member:discord.Member,time:TimeConverter,*,reason="Not specified."):
         if ctx.invoked_subcommand is None:
             embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
@@ -263,18 +292,33 @@ class Moderation(commands.Cog):
             await asyncio.sleep(time)
             await member.unban(reason="Ban duration ended.")
     
-    @time.group()
-    async def match(self,ctx,member:discord.Member,time:TimeConverter,r,*,words):   
-        async for message in ctx.channel.history(limit=100):
-            if words in message.content:
-                embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
-                embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {r}")
-                embedVar.set_footer(text=f"Requested by {ctx.author}.")
-                await member.send(embed=embedVar)
-                await member.ban(reason=r)
-                await message.author.ban(reason="Bad word.")
-                await asyncio.sleep(time)
-                await member.unban(reason="Ban duration is over.")
+    @time.command()
+    async def match(ctx,time:TimeConverter,reason,*,words):
+        """Bans every member that said [words] in the last 100 messages of this channel. Reason must be quoted if it isn't a single word"""
+        banned_words = words.split(" ")
+        last_100_messages = await ctx.channel.history(limit=123).flatten()
+        banned_people = []
+        for message in last_100_messages:
+            if message.author == ctx.author or message.author.bot:
+                continue
+            for word in banned_words:
+                if word in message.content:
+                    embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
+                    embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
+                    embedVar.set_footer(text=f"Requested by {ctx.author}.")
+                    await message.author.send(embed=embedVar)
+                    await message.author.ban(reason=reason)
+                    banned_people.append(message.author)
+                    break
+        n = len(banned_people)
+        if n:
+            await ctx.send((f'Done ! I banned {n} people. They will be unbanned in {time} seconds.' if n > 1 else f"Done ! I banned one person. They will be unbanned in {time} seconds."))
+        else:
+            await ctx.send("No one said those awful words.")
+        await asyncio.sleep(time)
+        for i in banned_people:
+            await i.unban()
+
 
     @commands.command(aliases=["u","unbna"])
     @commands.has_permissions(ban_members = True)
@@ -582,6 +626,8 @@ class Tags(commands.Cog):
         
     @tag.command()
     async def add(self,ctx,tag_name,*,description):
+        print(f"Tag name : {tag_name}")
+        print(f"Description : {description}")
         guild_id = f"_{ctx.guild.id}"
         async with aiosqlite.connect("databases/tags.db") as db:
             async with db.execute(f"SELECT description FROM {guild_id} WHERE tag_name = ?;",(tag_name,)) as cursor:
@@ -646,6 +692,8 @@ class ErrorHandler(commands.Cog):
         elif isinstance(error,commands.BadArgument):
             await ctx.send(error)
         elif isinstance(error,commands.DisabledCommand):
+            await ctx.send(error)
+        elif isinstance(error,commands.NoPrivateMessage):
             await ctx.send(error)
         else:
             raise error
@@ -738,7 +786,7 @@ class Logs(commands.Cog):
     
     @commands.Cog.listener()
     async def on_message(self,message):
-        if not message.author.bot and not message.is_system():
+        if not message.author.bot and not message.is_system() and message.guild:
             channel_id = await self.get_logs_channels(message.guild.id)
             if channel_id:
                 channel = message.guild.get_channel(channel_id)
@@ -1002,9 +1050,9 @@ class CustomOnMessage(commands.Cog):
     
     @commands.Cog.listener()
     async def on_message(self,message):
-        table = f"_{message.guild.id}"
-        if message.author == self.bot.user:
+        if message.author == self.bot.user or not message.guild:
             return
+        table = f"_{message.guild.id}"
         async with aiosqlite.connect("databases/custom_on_message.db") as db:
             cursor = await db.execute(f"SELECT description FROM {table} WHERE message_name = ?",(message.content,))
             result = await cursor.fetchone()
@@ -1068,11 +1116,14 @@ class CustomOnMessage(commands.Cog):
 class XPSystem(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
-        self._cd = commands.CooldownMapping.from_cooldown(1.0, 10.0, commands.BucketType.user)
+        self._cd = commands.CooldownMapping.from_cooldown(1.0, 10.0, commands.BucketType.member)
         self.suite1 = "40*1.1**"
         self.suite2 = "-30"
         self.u0 = 10
 
+    async def cog_check(self, ctx):
+        if not ctx.guild:
+            raise commands.NoPrivateMessage("These cannot be used in private messages.")
     def ratelimit_check(self, message):
         bucket = self._cd.get_bucket(message)
         return bucket.update_rate_limit()
@@ -1100,7 +1151,7 @@ class XPSystem(commands.Cog):
     async def on_message(self,message):
         retry_after = self.ratelimit_check(message)
         guild_prefix = tuple(await get_prefix(self.bot,message))
-        if message.author.bot or message.content.startswith(guild_prefix):
+        if message.author.bot or message.content.startswith(guild_prefix) or not message.guild:
             return
         if retry_after is None:
             xp_won = 1 + ceil(min(len(message.content)//10,1) * 8)
@@ -1254,6 +1305,11 @@ class OwnerOnly(commands.Cog):
     @commands.command()
     async def cogs(self,ctx):
         await ctx.send(", ".join(self.bot.cogs.keys()))
+    
+    @commands.command()
+    async def guildbyid(self,ctx,id:int):
+        guild = self.bot.get_guild(id)
+        await ctx.send(guild)
 
 
 @bot.event
@@ -1263,6 +1319,7 @@ async def on_ready():
 @bot.command()
 async def echo(ctx,*,args):
     await ctx.send(args)
+
 
 
 bot.add_cog(ChuckNorris(bot))
