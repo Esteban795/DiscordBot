@@ -9,7 +9,12 @@ class Moderation(commands.Cog):
         self.bot = bot
     
     async def bot_check(self, ctx):
-        """Checks if the message calls a command. If the channel is disabled or the member is banned from using commands, this will raise an error"""
+        """
+        This check does two things.
+        
+        1) It checks if the message was called from a guild. If not, this raises an error.
+        2) It checks if either the channel is allowed to call commands OR if the member that tried using commands is able to. If not, it raises 2 differents errors to make it clear.
+        """
         if not ctx.guild:
             raise commands.NoPrivateMessage("This bot doesn't work on DM channels.")
         async with aiosqlite.connect("databases/main.db") as db:
@@ -25,19 +30,18 @@ class Moderation(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_join(self,guild:discord.Guild):
-        """Create the role muted as soon as the bot joins the guild, if no muted role exists. Disable send messages permissions and speak permissions for muted role in every channel"""
+        """
+        1) Checks if the guild has a Muted/muted role. If the role doesn't exist, it creates it and disables send_messages/speak permissions.
+        2) Creates a warn table.
+        """
         existing_muted_role = discord.utils.get(guild.roles,name="muted") or discord.utils.get(guild.roles,name="Muted")
-        if existing_muted_role:
-            return
-        mutedRole = await guild.create_role(name="Muted",permissions=discord.Permissions(send_messages=False,speak=False))
-        for channel in guild.channels:
-            await channel.set_permissions(mutedRole, send_messages = False, speak = False)
+        if not existing_muted_role:
+            mutedRole = await guild.create_role(name="Muted",permissions=discord.Permissions(send_messages=False,speak=False))
+            for channel in guild.channels:
+                await channel.set_permissions(mutedRole, send_messages = False, speak = False)
         async with aiosqlite.connect("databases/warns.db") as db:
             await db.execute(f"CREATE TABLE IF NOT EXISTS _{guild.id}(member_id INT,nb_warnings INT)")
             await db.execute(f"INSERT INTO _{guild.id} VALUES(0,5);")
-            await db.commit()
-        async with aiosqlite.connect("databases/main.db"):
-            await db.execute(f"CREATE TABLE IF NOT EXISTS ignored_{guild.id}_members(member_id INT)")
             await db.commit()
     
     @commands.Cog.listener()
@@ -95,6 +99,7 @@ class Moderation(commands.Cog):
         """Removes the Muted role from the member. They now have the permission to speak/write"""
         mutedRole = discord.utils.get(ctx.guild.roles,name="Muted") 
         await user.remove_roles(mutedRole)
+        await ctx.send(f"{user} was unmuted.")
 
     @commands.command(aliases=["banl","bl"])
     @commands.has_permissions(administrator = True)
@@ -249,36 +254,54 @@ class Moderation(commands.Cog):
     @commands.command(aliases=["p","perrms"])
     @commands.has_permissions(administrator = True)
     async def perms(self,ctx,member:discord.Member):
+        """Sends you in DM the permissions the member has on the server."""
         embedVar = discord.Embed(title=f"You asked for {member}'s permissions on {ctx.guild}.",color=0xaaaaff)
         embedVar.add_field(name="Here they are : ",value="\n".join(["• {}".format(i[0]) for i in member.guild_permissions if i[1] is True])) #Iterate through the discord.Member permissions on the guild. If they have the permission, this is added to the list.
         await ctx.author.send(embed=embedVar)
 
     @commands.group(invoke_without_command=True)
     async def warn(self,ctx,member:discord.Member,*,reason=None):
+        """
+        With no subcommand passed : 
+
+        1) It connects to the database and check if the member already has warnings. It also stores the number of warns allowed for the server you're in. Default is 5.
+        2) If the member has warnings, we increment the number of warnings they have.
+            - the number of warnings goes above the limit allowed not to be under sanctions : the member gets kicked, their number of warnings get reset.
+            - the number of warnings stay under the limit allowed : we just increment the amount of warnings they have.
+        3) If the member has no warnings, we create a new row and add it to the database.
+        """
         if ctx.invoked_subcommand is None:
             table_name = f"_{ctx.guild.id}"
             async with aiosqlite.connect("databases/warns.db") as db:
                 cursor =  await db.execute(f"SELECT nb_warnings FROM {table_name}  WHERE member_id = ?",(member.id,))
                 result = await cursor.fetchone()
-                number_of_warns_allowed = await db.execute(f"SELECT nb_warnings FROM {table_name} WHERE member_id = 0;")
+                number_of_warns_allowed = await db.execute(f"SELECT nb_warnings FROM {table_name} WHERE member_id = 0;") #Number of warns allowed for everyone on the server. You can update it whenever you want.
                 res = await number_of_warns_allowed.fetchone()
-                if result:
+                if result:   #The member already has warnings
                     new_warns_number = result[0] + 1
-                    if new_warns_number >= int(res[0]):
+                    if new_warns_number >= int(res[0]): #The member reached the maximum number of warnings allowed without being kicked.
                         await db.execute(f"DELETE FROM {table_name} WHERE member_id = ?;",(member.id,))
                         await db.commit()
                         await member.kick(reason=reason)
                         await ctx.send(f"{member} was kicked due to too many warns !")
-
-                    else:
+                    else: #Just increment the amount of warnings the member has
                         await db.execute(f"UPDATE {table_name} SET nb_warnings = ? WHERE member_id = ?",(new_warns_number,member.id))
                         await db.commit()
-                else:
-                    await db.execute(f"INSERT INTO {table_name} VALUES(?,1);",(member.id,))
+                else: #Member doesn't have any warnings
+                    await db.execute(f"INSERT INTO {table_name} VALUES(?,1);",(member.id,)) #We create their row
                     await db.commit()
     
     @warn.command()
     async def changenumber(self,ctx,amount:int):
+        """
+        This allows you to change the number of warnings required to get kicked from the guild.
+
+        1) Retrieves the current amount of warnings allowed from the database.
+        2) Ask you to confirm you want this number to change. 
+        /!\ If you change this limit to a smaller one, members with number of warnings ABOVE the new limit will only get kicked with their next warning.
+
+        3) If you confirm, it changes it. If you take too much time to answer, it cancels the process.
+        """
         table_name =  f"_{ctx.guild.id}"
         async with aiosqlite.connect("databases/warns.db") as db:
             cursor = await db.execute(f"SELECT nb_warnings FROM {table_name} WHERE member_id = 0;")
@@ -295,30 +318,43 @@ class Moderation(commands.Cog):
 
     @commands.command(aliases=["sb"])
     async def softban(self,ctx,member:discord.Member,*,reason):
+        """A softban is a kick that allows you to delete every message the member has sent on your server.
+        
+        1) We ban the member from the guild.
+        2) We immediately unban them.
+        """
         await member.ban(reason=reason)
-        await member.unban(reason="Softban.")
+        await member.unban(reason=reason)
         await ctx.send(f"{member} was softbanned.")
 
     @commands.group(invoke_without_command=True)
     async def ignore(self,ctx):
+        """This command requires subcommand to work. Nothing much to add to this.."""
         if ctx.invoked_subcommand is None:
             await ctx.send("Use the 'member' or 'channel' subcommand to specify who shouldn't be allowed to use a command, or where people won't be allowed to use those beautiful commands !")
 
     @ignore.command(name="member")
     async def _m(self,ctx,member:discord.Member=None):
+        """Ignore the commands from a member on a specific server. This means that they won't be able to use commands on this server but they will on another.
+
+        1) Checks if the member is already ignored. If they are :
+            - bot asks you if you want to allow them to use commands. Type 'yes' to remove the ignore status on them.
+        2) If the member can currently use commands, they are now disabled for them.
+        """
         async with aiosqlite.connect("databases/main.db") as db:
-            cursor = await db.execute("SELECT member_id FROM ignored_members WHERE member_id = ? AND guild_id = ?",(member.id,ctx.guild.id))
+            cursor = await db.execute("SELECT member_id FROM ignored_members WHERE member_id = ? AND guild_id = ?",(member.id,ctx.guild.id)) 
             result = await cursor.fetchone()
-            if result:
+            if result: #Is member already ignored
                 await ctx.send("This member is already ignored. Type 'yes' if you want them to be able to use commands on this server !")
-                try:
-                    answer = await self.bot.wait_for("message",check=lambda m: m.author == ctx.author and m.channel == ctx.channel,timeout=10)
+                try: #Confirm
+                    confirm = await self.bot.wait_for("message",check=lambda m: m.author == ctx.author and m.channel == ctx.channel,timeout=10)
                 except asyncio.TimeoutError:
                     await ctx.send("You didn't answer fast enough. Aborting the process !")
                 else:
-                    await db.execute("DELETE FROM ignored_members WHERE member_id = ? AND guild_id = ?",(member.id,ctx.guild.id))
-                    await db.commit()
-                    await ctx.send(f"{member.mention} now has enabled commands !")
+                    if confirm.content.lower() == "yes": #confirmation
+                        await db.execute("DELETE FROM ignored_members WHERE member_id = ? AND guild_id = ?",(member.id,ctx.guild.id))
+                        await db.commit()
+                        await ctx.send(f"{member.mention} now has enabled commands !")
             else:
                 await db.execute("INSERT INTO ignored_members VALUES(?,?);",(member.id,ctx.guild.id))
                 await db.commit()
@@ -326,17 +362,23 @@ class Moderation(commands.Cog):
 
     @ignore.command()
     async def channel(self,ctx,channel:discord.TextChannel=None):
+        """
+        Ignore the commands from a channel on a server. This means that nobody will be able to use commands in this channel.
+
+        1) Same as member. If the channel is already ignored, then you can delete it by typing 'yes'.
+        2) Else,if the channel has commands enabled, it disables them from now on and says every time someone tries to use a command that commands aren't available on this channel
+        """
         async with aiosqlite.connect("databases/main.db") as db:
             cursor = await db.execute("SELECT channel_id FROM ignored_channels WHERE channel_id = ?",(channel.id,))
             result = await cursor.fetchone()
-            if result:
+            if result: #is channel already ignored
                 await ctx.send("This channel is already ignored. Type 'yes' if you want people to be able to use commands there !")
-                try:
-                    answer = await self.bot.wait_for("message",check=lambda m: m.author == ctx.author and m.channel == ctx.channel,timeout=10)
+                try: #Confirm
+                    confirm = await self.bot.wait_for("message",check=lambda m: m.author == ctx.author and m.channel == ctx.channel,timeout=10)
                 except asyncio.TimeoutError:
                     await ctx.send("You didn't answer fast enough. Aborting the process !")
                 else:
-                    if answer.content.lower() == "yes":
+                    if confirm.content.lower() == "yes": #confirm 
                         await db.execute("DELETE FROM ignored_channels WHERE channel_id = ?",(channel.id,))
                         await db.commit()
                         await ctx.send(f"{channel.mention} now has enabled commands !")
@@ -349,56 +391,116 @@ class Moderation(commands.Cog):
 
     @commands.group(invoke_without_command=True)
     async def purge(self,ctx,Amount:int=2): #Delete "Amount" messages from the current channel. $purge [int]
+        """
+        Deletes a certain amount of message from the channel the command is used in. This command can have more detailed purge options, with the subcommands.
+
+        Usage example : $purge 10
+        This will delete the last 10 messages from the channel.
+        """
         await ctx.message.delete()
         if ctx.invoked_subcommand is None:
             await ctx.channel.purge(limit=int(Amount))
     
     @purge.command()
     async def commands(self,ctx,amount:int=2):
+        """
+        /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
+        1) Get the guild custom prefixes (if they exist. Else, only '$' will be matched as a prefix). 
+        BE CAREFUL : this command only allows you to delete the commands called with either '$' or the guild custom prefixes. 
+        This means that any command from another bot won't be detected as such and thus not deleted.
+
+        Conditions : 
+        - Message's author is a bot OR message starts with a server prefix.
+        """
         guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
         await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot or m.content.startswith(guild_prefix))
  
     @purge.command()
     async def bots(selt,ctx,amount:int=2):
+        """
+        /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
+
+        Conditions : the message's author is a bot.
+        """
         await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot)
         await ctx.message.delete()
     
     @purge.command()
     async def humans(self,ctx,amount:int=2):
+        """
+        /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
+
+        Conditions : the message's author is NOT a bot AND the message doesn't call a command.
+        """
         guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
         await ctx.channel.purge(limit=amount,check=lambda m:not (m.author.bot or m.content.startswith(guild_prefix)))
     
     @purge.command()
     async def member(self,ctx,amount:int=2,member:discord.Member=None):
+        """
+        /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
+
+        Conditions : the message's author is NOT a bot.
+        """
         member = member or ctx.author
         await ctx.channel.purge(limit=amount,check=lambda m:m.author == member)
         await ctx.message.delete()
     
     @purge.command()
     async def match(self,ctx,amount:int=2,*,content):
+        """
+        /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
+
+        Conditions : [content] is in the message.
+        """
         await ctx.channel.purge(limit=amount,check=lambda m:content in m.content)
     
     @purge.command(name="not")
     async def _not(self,ctx,amount:int=2,*,content):
+        """
+        /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
+
+        Conditions : [content] is NOT in the message.
+        """
         await ctx.channel.purge(limit=amount,check=lambda m:not (content in m.content))
         await ctx.message.delete()
     
     @purge.command()
     async def startswith(self,ctx,amount:int=2,*,content):
+        """
+        /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
+
+        Conditions : message starts with [content] .
+        """
         await ctx.channel.purge(limit=amount,check=lambda m:m.content.startswith(content))
         await ctx.message.delete()
     
     @purge.command()
     async def endswith(self,ctx,amount:int=2,*,content):
+        """
+        /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
+
+        Conditions : message ends with [content].
+        """
         await ctx.channel.purge(limit=amount,check=lambda m:m.content.endswith(content))
         
     @purge.command()
     async def embeds(self,ctx,amount:int=2):
+        """
+        /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
+
+        Conditions : message is an embed.
+        """
         await ctx.channel.purge(limit=amount,check=lambda m:len(m.embeds))
         await ctx.message.delete()
 
     @purge.command()
     async def images(self,ctx,amount:int=2):
+        """
+        /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
+        This one is not fully accurate 
+        Conditions : message ends with [content].
+        """
         await ctx.channel.purge(limit=amount,check=lambda m:len(m.attachments) or m.content.startswith(("https://cdn.discordapp.com/attachments/","https://tenor.com/view/")))
         await ctx.message.delete()
 
