@@ -33,5 +33,10 @@ class OwnerOnly(commands.Cog):
         guild = self.bot.get_guild(id)
         await ctx.send(guild)
 
+    @commands.command()
+    async def userbyid(self,ctx,id:int):
+        user = await self.bot.fetch_user(id)
+        await ctx.send(user)
+        
 def setup(bot):
     bot.add_cog(OwnerOnly(bot))

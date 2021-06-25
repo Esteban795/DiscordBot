@@ -1,19 +1,10 @@
-import typing
 from dotenv import load_dotenv
 import discord
 import os
 from discord.ext import commands
-import requests
-import asyncio
-import youtube_dl
 import aiosqlite
-from difflib import get_close_matches
 from datetime import datetime
 import re
-from PIL import Image,ImageDraw,ImageFont
-from math import floor,ceil
-import functools
-
 time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])") #Detects patterns like "12d","10m"
 time_dict = {"h":3600, "s":1, "m":60, "d":86400}
 
@@ -90,19 +81,6 @@ class MyHelp(commands.HelpCommand):
 bot.help_command= MyHelp() #A custom help command.
 TOKEN = os.getenv('BOT_TOKEN') #Bot token needs to be stored in a .env file
 
-ydl_opts = {
-    'format':"bestaudio/best",
-    "postprocessors":[{
-        'key':'FFmpegExtractAudio',
-        'preferredcodec':'mp3',
-        'preferredquality':'256'
-    }]
-}
-ffmpegopts = {
-    'before_options': '-nostdin',
-    'options': '-vn'
-}
-
 @bot.event
 async def on_ready():
     print(f'Logged as {bot.user.name}')
@@ -111,7 +89,7 @@ async def on_ready():
 async def echo(ctx,*,args):
     await ctx.send(args)
 
-initial_extensions = ["cogs.music","cogs.tags","cogs.eh","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.xp","cogs.mod","cogs.chucknorris"]
+initial_extensions = ["cogs.music","cogs.tags","cogs.eh","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.xp","cogs.mod","cogs.chucknorris","cogs.reddit"]
 
 for i in initial_extensions:
     try:
@@ -120,4 +98,3 @@ for i in initial_extensions:
         print(f"Couldn't load {i}.")
 
 bot.run(TOKEN)
-
