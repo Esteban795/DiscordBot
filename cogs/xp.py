@@ -47,7 +47,7 @@ class XPSystem(commands.Cog):
         if message.author.bot or message.content.startswith(guild_prefix) or not message.guild:
             return
         if retry_after is None:
-            xp_won = 1 + ceil(min(len(message.content)//50,1) * 8)
+            xp_won = 1 + ceil(min(len(message.content)/100,1) * 8)
             table_name = f"_{message.guild.id}"
             async with aiosqlite.connect("databases/xp.db") as db:
                 cursor = await db.execute(f"SELECT current_xp,next_level_xp,current_level FROM {table_name} WHERE member_id = ?",(message.author.id,))

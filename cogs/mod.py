@@ -36,7 +36,7 @@ class Moderation(commands.Cog):
         """
         existing_muted_role = discord.utils.get(guild.roles,name="muted") or discord.utils.get(guild.roles,name="Muted")
         if not existing_muted_role:
-            mutedRole = await guild.create_role(name="Muted",permissions=discord.Permissions(send_messages=False,speak=False))
+            mutedRole = await guild.create_role(name="Muted",permissions=discord.Permissions(send_messages=False,speak=False,add_reactions=False))
             for channel in guild.channels:
                 await channel.set_permissions(mutedRole, send_messages = False, speak = False)
         async with aiosqlite.connect("databases/warns.db") as db:
@@ -86,6 +86,7 @@ class Moderation(commands.Cog):
     async def mute(self,ctx,member:discord.Member,time:TimeConverter=None):
         """Gives [member] the Muted role (they can't speak or write) for (time) if you specified one. After the mute duration is over, it automatically demutes them"""
         mutedRole = discord.utils.get(ctx.guild.roles,name="Muted") #Get the discord.Role instance
+        print(mutedRole)
         if mutedRole:
             await member.add_roles(mutedRole)
             await ctx.send(("Muted {} for {}s" if time else "Muted {}").format(member, time))
