@@ -1,4 +1,5 @@
 import discord
+from discord.errors import DiscordException
 from discord.ext import commands
 import contextlib
 import io
@@ -32,8 +33,10 @@ class Python(commands.Cog):
             cl, exc, tb = sys.exc_info()
             line_number = traceback.extract_tb(tb)[-1][1]
         else:
-            return
-        raise Exception(f"```Command raised an exception : \n {error_class} at line {line_number} of source string : {detail}```")
+            embed = discord.Embed(title="Your code executed without any problem.",color=0xaaffaa,timestamp=datetime.utcnow(),description=f"```{output}```")
+            return await ctx.send(embed=embed)
+        embed = discord.Embed(title="Your code wasn't executed correctly",color=0xaaffaa,timestamp=datetime.utcnow(),description=f"```Command raised an exception : \n {error_class} at line {line_number} of source string : {detail}```")
+        return await ctx.send(embed=embed)
 
 def setup(bot):
     bot.add_cog(Python(bot))
