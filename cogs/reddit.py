@@ -88,23 +88,44 @@ class Reddit(commands.Cog):
 
     @reddit.command()
     async def rising(self,ctx,subreddit:str="meme"):
+        """
+        Works the same as reddit command. The difference is that it gets rising posts from the subreddit, not random one.
+        """
         url = self.post_type[ctx.invoked_with] #Get the URL we're gonna use
         await self.reddit_request(ctx,url,subreddit) #API request
     
     @reddit.command()
     async def new(self,ctx,subreddit:str="meme"):
+        """
+        Works the same as reddit command. The difference is that it gets new posts from the subreddit, not random one.
+        """
         url = self.post_type[ctx.invoked_with]
         await self.reddit_request(ctx,url,subreddit) #API request
     
     @reddit.command()
     async def controversial(self,ctx,subreddit:str="meme"):
+        """
+        Works the same as reddit command. The difference is that it gets controversial posts from the subreddit, not random one.
+        """
         url = self.post_type[ctx.invoked_with]
         await self.reddit_request(ctx,url,subreddit) #API request
 
     @reddit.command()
     async def top(self,ctx,subreddit:str="meme"):
+        """
+        Works the same as reddit command. The difference is that it gets top posts from the subreddit, not random one.
+        """
         url = self.post_type[ctx.invoked_with]
         await self.reddit_request(ctx,url,subreddit) #API request
     
+    @reddit.command()
+    async def display(self,ctx,url:str):
+        await ctx.message.delete()
+        regex_subreddit = re.compile(r"r/(\w{1,255})/")
+        subreddit = regex_subreddit.findall(url)
+        if not subreddit:
+            return await ctx.send(f"Invalid link {ctx.author.mention}. Please provide a correct one !")
+        await self.reddit_request(ctx,url+".json",subreddit)
+
 def setup(bot):
     bot.add_cog(Reddit(bot))

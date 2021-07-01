@@ -6,8 +6,9 @@ class OwnerOnly(commands.Cog):
         self.bot = bot
     
     async def cog_check(self, ctx):
-        return await self.bot.is_owner(ctx.author)
-
+        if ctx.author.id != 475332124711321611:
+            raise commands.NotOwner("You must be owner to use any commands of the OwnerOnly cog.")
+        return True
     @commands.command()
     async def spam(ctx,member:discord.Member=None):
         member = member or ctx.author
@@ -24,10 +25,42 @@ class OwnerOnly(commands.Cog):
         member = member or ctx.author
         await ctx.send(f"{member}'s ID : {member.id}")
     
-    @commands.command()
+    @commands.group(invoke_without_command=True)
     async def cogs(self,ctx):
-        await ctx.send(", ".join(self.bot.cogs.keys()))
+        if ctx.invoked_subcommand is None:
+            await ctx.send(", ".join(self.bot.cogs.keys()))
     
+    @cogs.command()
+    async def load(self,ctx,cog_name):
+        if cog_name == "owner":
+            return await ctx.send("This cog cannot be turned off.")
+        try:
+            self.bot.load_extension(f"cogs.{cog_name}")
+        except:
+            return await ctx.send(f"Couldn't load : {cog_name}. Maybe it doesn't exist ?")
+        else:
+            await ctx.send(f"Succesfully loaded {cog_name}.")
+
+    @cogs.command()
+    async def unload(self,ctx,cog_name):
+        if cog_name == "owner":
+            return await ctx.send("This cog cannot be turned off.")
+        try:
+            self.bot.unload_extension(f"cogs.{cog_name}")
+        except:
+            return await ctx.send(f"Couldn't unload : {cog_name}. Maybe it doesn't exist ?")
+        else:
+            await ctx.send(f"Succesfully unloaded {cog_name}.")
+        
+    @cogs.command()
+    async def reload(self,ctx,cog_name):
+        try:
+            self.bot.reload_extension(f"cogs.{cog_name}")
+        except:
+            return await ctx.send(f"Couldn't reload : {cog_name}. Maybe it doesn't exist ?")
+        else:
+            await ctx.send(f"Succesfully reloaded {cog_name}.")
+            
     @commands.command()
     async def guildbyid(self,ctx,id:int):
         guild = self.bot.get_guild(id)

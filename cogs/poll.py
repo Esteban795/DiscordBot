@@ -2,8 +2,7 @@ import discord
 from discord.ext import commands
 from bot import TimeConverter
 import asyncio
-from datetime import datetime
-
+import datetime
 class Poll(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
@@ -32,7 +31,10 @@ class Poll(commands.Cog):
             try:
                 choices = "\n".join([f'{self.emote_alphabet[i]}  {args[i].capitalize()}' for i in range(len(args))])
                 embed_poll = discord.Embed(title=question,description=choices,color=0xaaaaaa)
-                embed_poll.add_field(name="Expires on :",value="test")
+                current_time = datetime.datetime.utcnow()
+                time_delta = datetime.timedelta(seconds=time)
+                final_time = current_time + time_delta
+                embed_poll.add_field(name="Expires on :",value="{}-{}-{} {}:{}".format(final_time.day,final_time.month,final_time.year,final_time.hour,final_time.minute))
                 embed_poll.set_footer(text=f"Requested by {ctx.author}.")
                 message = await ctx.send(embed=embed_poll)
                 for i in range(len(args)):
@@ -40,7 +42,7 @@ class Poll(commands.Cog):
                 await asyncio.sleep(time)
                 cached_message = discord.utils.get(self.bot.cached_messages, id=message.id)
                 reactions_count = sorted([(cached_message.reactions[i].count,i) for i in range(len(args))],key=lambda x:x[0],reverse=True)[0]
-                timed_embed_poll = discord.Embed(title=f"Poll '{question.capitalize()}' just ended !",color=0xaaffaa,timestamp=datetime.utcnow(),description=f"Proposition '{args[reactions_count[1]].capitalize()}' won with {reactions_count[0] - 1} votes !")
+                timed_embed_poll = discord.Embed(title=f"Poll '{question.capitalize()}' just ended !",color=0xaaffaa,timestamp=datetime.datetime.utcnow(),description=f"Proposition '{args[reactions_count[1]].capitalize()}' won with {reactions_count[0] - 1} votes !")
                 await ctx.send(embed=timed_embed_poll)
             except IndexError as e:
                 await ctx.send("Discord doesn't allow me to react with more than 20 emojis. So you can't have more than 20 choices for your poll.")

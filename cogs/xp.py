@@ -116,7 +116,7 @@ class XPSystem(commands.Cog):
             cursor = await db.execute(f"SELECT current_xp,next_level_xp,current_level FROM {table_name} WHERE member_id = ?",(member_id,))
             result = await cursor.fetchone()
             if result:
-                await member.avatar_url.save(f"avatars/{member_id}_avatar.png")
+                await member.avatar_url_as(format="webp").save(f"avatars/{member_id}_avatar.png")
                 await self.run_xp_card(member_id,str(member),10,result[2],result[0],result[1])
                 await ctx.send(file=discord.File(f"avatars/{member_id}_rank_card.png"))
                 os.remove(f"avatars/{member_id}_avatar.png")

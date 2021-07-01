@@ -1,4 +1,4 @@
-import requests
+import aiohttp
 import discord
 from discord.ext import commands
 
@@ -12,11 +12,15 @@ class ChuckNorris(commands.Cog):
         l = len(args)
         try:
             if l > 0:
-                r = requests.get(f"https://api.chucknorris.io/jokes/random?category={args[0].lower()}") #Request to the API I'm using with a specific category
+                async with aiohttp.ClientSession() as cs:
+                    async with cs.get(f"https://api.chucknorris.io/jokes/random?category={args[0].lower()}") as re:#Request to the API I'm using with a specific category
+                        r = await re.json()
             else:
-                r = requests.get("https://api.chucknorris.io/jokes/random") #Request to the API I'm using,random joke this time
-            joke = r.json()["value"]
-            categories = ",".join(r.json()["categories"]) if len(r.json()["categories"]) > 0 else "None"
+                async with aiohttp.ClientSession() as cs:
+                    async with cs.get(f"https://api.chucknorris.io/jokes/random") as re: #Request to the API I'm using,random joke this time
+                        r = await re.json()
+            joke = r["value"]
+            categories = ",".join(r["categories"]) if len(r["categories"]) > 0 else "None"
             embedVar = discord.Embed(title=f"Categories : {categories}.",color=0xaaffaa)
             embedVar.add_field(name="This joke is provided to you by : Chuck Norris himself.",value=f"{joke}")
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
@@ -32,8 +36,10 @@ class ChuckNorris(commands.Cog):
     async def cncategories(self,ctx):
         """List the categories available from the API"""
         embedVar = discord.Embed(title="The categories of joke the bot can tell you.",color=0xaaffaa)
-        r = requests.get("https://api.chucknorris.io/jokes/categories")
-        embedVar.add_field(name="Pick your favourite ! ",value="\n".join(["• {}".format(i) for i in r.json()]))
+        async with aiohttp.ClientSession() as cs:
+            async with cs.get(f"https://api.chucknorris.io/jokes/categories") as re: #Request to the API I'm using,random joke this time
+                r = await re.json()
+        embedVar.add_field(name="Pick your favourite ! ",value="\n".join(["• {}".format(i) for i in r]))
         await ctx.send(embed=embedVar)
 
 def setup(bot):

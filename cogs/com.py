@@ -66,14 +66,14 @@ class CustomOnMessage(commands.Cog):
         Lets you remove customs on_message from the bot.
         /!\ This is server dependant, which means you can't use a custom on_message defined on a certain server on another server.
 
-        Usage example :
+        ### Usage example :
         Let's say you used this command to add a custom on message previously.
         
-        $com add hello hey
+        - $com add hello hey
 
         To remove it, you need to use :
 
-        $com remove hello
+        - $com remove hello
 
         To be more global, you need to use what calls the bot's answer.
         """
