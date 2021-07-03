@@ -1,6 +1,5 @@
 import asyncio
 import discord
-from discord.enums import RelationshipType
 import youtube_dl
 from discord.ext import commands
 
@@ -55,9 +54,11 @@ class Music(commands.Cog):
     @commands.command()
     async def play(self, ctx, *, url):
         """Streams from a url (doesn't predownload)"""
+        if ctx.voice_client and ctx.voice_client.is_playing():
+            ctx.voice_client.stop()
         async with ctx.typing():
             player = await YTDLSource.from_url(url, loop=self.bot.loop, stream=True)
-            ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else None)
+            ctx.voice_client.play(player)
         await ctx.send(f'Now playing: {player.title}')
 
     @commands.command()

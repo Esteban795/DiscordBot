@@ -31,35 +31,40 @@ class OwnerOnly(commands.Cog):
             await ctx.send(", ".join(self.bot.cogs.keys()))
     
     @cogs.command()
-    async def load(self,ctx,cog_name):
-        if cog_name == "owner":
-            return await ctx.send("This cog cannot be turned off.")
-        try:
-            self.bot.load_extension(f"cogs.{cog_name}")
-        except:
-            return await ctx.send(f"Couldn't load : {cog_name}. Maybe it doesn't exist ?")
-        else:
-            await ctx.send(f"Succesfully loaded {cog_name}.")
+    async def load(self,ctx,*cogs):
+        for cog in cogs:
+            if cog == "owner":
+                return await ctx.send("'Owner' cog cannot be turned off.")
+            try:
+                self.bot.load_extension(f"cogs.{cog}")
+            except:
+                return await ctx.send(f"Couldn't load : {cog}. Maybe it doesn't exist ?")
+            else:
+                await ctx.send(f"Succesfully loaded {cog}.")
 
     @cogs.command()
-    async def unload(self,ctx,cog_name):
-        if cog_name == "owner":
-            return await ctx.send("This cog cannot be turned off.")
-        try:
-            self.bot.unload_extension(f"cogs.{cog_name}")
-        except:
-            return await ctx.send(f"Couldn't unload : {cog_name}. Maybe it doesn't exist ?")
-        else:
-            await ctx.send(f"Succesfully unloaded {cog_name}.")
+    async def unload(self,ctx,*cogs):
+        for cog in cogs:
+            if cog == "owner":
+                return await ctx.send("'Owner' cog cannot be turned off.")
+            try:
+                self.bot.unload_extension(f"cogs.{cog}")
+            except:
+                return await ctx.send(f"Couldn't unload : {cog}. Maybe it doesn't exist ?")
+            else:
+                await ctx.send(f"Succesfully unloaded {cog}.")
         
     @cogs.command()
-    async def reload(self,ctx,cog_name):
-        try:
-            self.bot.reload_extension(f"cogs.{cog_name}")
-        except:
-            return await ctx.send(f"Couldn't reload : {cog_name}. Maybe it doesn't exist ?")
-        else:
-            await ctx.send(f"Succesfully reloaded {cog_name}.")
+    async def reload(self,ctx,*cogs):
+        for cog in cogs:
+            if cog == "owner":
+                return await ctx.send("'Owner' cog cannot be turned off.")
+            try:
+                self.bot.reload_extension(f"cogs.{cog}")
+            except:
+                return await ctx.send(f"Couldn't reload : {cog}. Maybe it doesn't exist ?")
+            else:
+                await ctx.send(f"Succesfully reloaded {cog}.")
             
     @commands.command()
     async def guildbyid(self,ctx,id:int):

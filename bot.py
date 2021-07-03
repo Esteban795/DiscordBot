@@ -5,6 +5,7 @@ from discord.ext import commands
 import aiosqlite
 from datetime import datetime
 import re
+
 time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])") #Detects patterns like "12d","10m"
 time_dict = {"h":3600, "s":1, "m":60, "d":86400}
 
@@ -49,7 +50,8 @@ class MyHelp(commands.HelpCommand):
             command_signatures = [self.get_command_signature(c) for c in filtered]
             if command_signatures:
                 cog_name = getattr(cog, "qualified_name", "No Category")
-                embed.add_field(name=cog_name, value="\n".join(command_signatures), inline=False)
+                inline = False if len(command_signatures) < 10 else True
+                embed.add_field(name=cog_name, value="\n".join(command_signatures), inline=inline)
         await channel.send(embed=embed)
     
     async def send_command_help(self, command):
@@ -88,8 +90,8 @@ async def on_ready():
 @bot.command()
 async def echo(ctx,*,args):
     await ctx.send(args)
-
-initial_extensions = ["cogs.music","cogs.tags","cogs.eh","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.xp","cogs.mod","cogs.chucknorris","cogs.reddit","cogs.python"]
+    
+initial_extensions = ["cogs.music","cogs.tags","cogs.eh","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.xp","cogs.mod","cogs.chucknorris","cogs.reddit","cogs.python","cogs.image"]
 
 for i in initial_extensions:
     try:
