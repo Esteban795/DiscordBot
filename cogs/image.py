@@ -5,16 +5,54 @@ import re
 import aiohttp
 import io
 import functools
+import cv2
+import numpy as np
 
 class ImageProcessing(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
     
+    def _topng(self,args):
+        # load image
+        img = cv2.imdecode(np.frombuffer(args[0].read(), np.uint8), 1)
+        # convert to graky
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # threshold input image as mask
+        mask = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY)[1]
+
+        # negate mask
+        mask = 255 - mask
+
+        # apply morphology to remove isolated extraneous noise
+        # use borderconstant of black since foreground touches the edges
+        kernel = np.ones((3,3), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        # anti-alias the mask -- blur then stretch
+        # blur alpha channel
+        mask = cv2.GaussianBlur(mask, (0,0), sigmaX=2, sigmaY=2, borderType = cv2.BORDER_DEFAULT)
+
+        # linear stretch so that 127.5 goes to 0, but 255 stays 255
+        mask = (2*(mask.astype(np.float32))-255.0).clip(0,255).astype(np.uint8)
+
+        # put mask into alpha channel
+        result = img.copy()
+        result = cv2.cvtColor(result, cv2.COLOR_BGR2BGRA)
+        result[:, :, 3] = mask
+
+        
+        # save resulting masked image
+        is_success,buffer = cv2.imencode(".png", result)
+        byte_io = io.BytesIO(buffer)
+        file = discord.File(fp=byte_io,filename="test.png")
+        return file
+
     def _crop_ellipse(self,args):
         coord_x1,coord_y1,coord_x2,coord_y2,img = args
         img_rgba = Image.open(img).convert("RGBA")
         alpha_background = Image.new("L",img_rgba.size,color=0)
-
         draw = ImageDraw.Draw(alpha_background)
         draw.ellipse((coord_x1,coord_y1,coord_x2,coord_y2), fill=255)
         img_rgba.putalpha(alpha_background)
@@ -201,6 +239,19 @@ class ImageProcessing(commands.Cog):
         f = await self.run_image_processing(self._crop_ellipse,coord_x1,coord_y1,coord_x2,coord_y2,img)
         try:
             await ctx.send(content=f"{ctx.author.mention}, I'm done cropping your image !",file=f)
+        except discord.HTTPException as e:
+            await ctx.send("File too large. I can't send this.")
+        f.close()
+
+    @commands.command()
+    async def topng(self,ctx,img:str=None):
+        try:
+            img, = await self.save_img(ctx.message)
+        except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+        f = await self.run_image_processing(self._topng,img)
+        try:
+            await ctx.send(content=f"{ctx.author.mention}, I'm done removing the background from your image !",file=f)
         except discord.HTTPException as e:
             await ctx.send("File too large. I can't send this.")
         f.close()
