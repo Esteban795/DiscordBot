@@ -1,5 +1,3 @@
-from discord import message
-from discord.errors import HTTPException
 from discord.ext import commands
 import discord
 from PIL import Image,ImageDraw
@@ -8,12 +6,46 @@ import aiohttp
 import io
 import functools
 
-from discord.ext.commands.core import command
-
 class ImageProcessing(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
     
+    def _crop_ellipse(self,args):
+        coord_x1,coord_y1,coord_x2,coord_y2,img = args
+        img_rgba = Image.open(img).convert("RGBA")
+        alpha_background = Image.new("L",img_rgba.size,color=0)
+
+        draw = ImageDraw.Draw(alpha_background)
+        draw.ellipse((coord_x1,coord_y1,coord_x2,coord_y2), fill=255)
+        img_rgba.putalpha(alpha_background)
+        im_rgba_crop = img_rgba.crop((coord_x1,coord_y1,coord_x2,coord_y2))
+        byte_io = io.BytesIO()
+        im_rgba_crop.save(byte_io,"PNG")
+        byte_io.seek(0)
+        file = discord.File(fp=byte_io,filename="test.png")
+        return file
+
+    def _crop(self,args):
+        coord_x1,coord_y1,coord_x2,coord_y2,img = args
+        image = Image.open(img).convert("RGBA")
+        res = image.crop((coord_x1,coord_y1,coord_x2,coord_y2))
+        byte_io = io.BytesIO()
+        res.save(byte_io,"PNG")
+        byte_io.seek(0)
+        file = discord.File(fp=byte_io,filename="test.png")
+        return file
+
+    def _paste(self,args):
+        coord_x,coord_y,img1,img2 = args
+        image1 = Image.open(img1).convert("RGBA")
+        image2 = Image.open(img2).convert("RGBA")
+        image1.paste(image2,(coord_x,coord_y),mask=image2)
+        byte_io = io.BytesIO()
+        image1.save(byte_io,"PNG")
+        byte_io.seek(0)
+        file = discord.File(fp=byte_io,filename="test.png")
+        return file
+
     def _blend(self,args):
         def change_image_size(max_width, max_height, image):
             width_ratio  = max_width / image.size[0]
@@ -95,7 +127,7 @@ class ImageProcessing(commands.Cog):
         f = await self.run_image_processing(self._resize,width,img)
         try:
             await ctx.send(content=f"{ctx.author.mention}, I'm done resizing your image !",file=f)
-        except HTTPException as e:
+        except discord.HTTPException as e:
             await ctx.send("File too large. I can't send this.")
         f.close()
 
@@ -108,7 +140,7 @@ class ImageProcessing(commands.Cog):
         f = await self.run_image_processing(self._rotate,angle,img)
         try:
             await ctx.send(content=f"{ctx.author.mention}, I'm done rotating your image !",file=f)
-        except HTTPException as e:
+        except discord.HTTPException as e:
             await ctx.send("File too large. I can't send this.")
         f.close()
     
@@ -121,7 +153,55 @@ class ImageProcessing(commands.Cog):
         f = await self.run_image_processing(self._blend,transparency,img1,img2)
         try:
             await ctx.send(content=f"{ctx.author.mention}, I'm done blending your images !",file=f)
-        except HTTPException as e:
+        except discord.HTTPException as e:
+            await ctx.send("File too large. I can't send this.")
+        f.close()
+    
+    @commands.command()
+    async def paste(self,ctx,coord_x:int,coord_y:int,img1:str,img2:str=None):
+        if coord_x < 0 or coord_y < 0:
+            return await ctx.send("X and Y offset must be positive integers.")
+        try:
+            img1,img2 = await self.save_img(ctx.message,2)
+        except TypeError:
+            return await ctx.send("I need exactly two images to perform this command. Please, provide them. (upload one and give the discord image link for the other, or 2 discord image links).")
+        f = await self.run_image_processing(self._paste,coord_x,coord_y,img1,img2)
+        try:
+            await ctx.send(content=f"{ctx.author.mention}, I'm done pasting your images !",file=f)
+        except discord.HTTPException as e:
+            await ctx.send("File too large. I can't send this.")
+        f.close()
+    
+    @commands.group(invoke_without_command=True)
+    async def crop(self,ctx,coord_x1:int,coord_y1:int,coord_x2:int,coord_y2:int,img:str=None):
+        if ctx.invoked_subcommand is None:
+            for i in [coord_x1,coord_x2,coord_y1,coord_y2]:
+                if i < 0:
+                    return await ctx.send("Only POSITIVES INTEGERS are allowed for this command.")
+            try:
+                img, = await self.save_img(ctx.message)
+            except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+            f = await self.run_image_processing(self._crop,coord_x1,coord_y1,coord_x2,coord_y2,img)
+            try:
+                await ctx.send(content=f"{ctx.author.mention}, I'm done cropping your image !",file=f)
+            except discord.HTTPException as e:
+                await ctx.send("File too large. I can't send this.")
+            f.close()
+
+    @crop.command(invoke_without_command=True)
+    async def ellipse(self,ctx,coord_x1:int,coord_y1:int,coord_x2:int,coord_y2:int,img:str=None):
+        for i in [coord_x1,coord_x2,coord_y1,coord_y2]:
+            if i < 0:
+                return await ctx.send("Only POSITIVES INTEGERS are allowed for this command.")
+        try:
+            img, = await self.save_img(ctx.message)
+        except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+        f = await self.run_image_processing(self._crop_ellipse,coord_x1,coord_y1,coord_x2,coord_y2,img)
+        try:
+            await ctx.send(content=f"{ctx.author.mention}, I'm done cropping your image !",file=f)
+        except discord.HTTPException as e:
             await ctx.send("File too large. I can't send this.")
         f.close()
 
