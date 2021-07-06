@@ -7,12 +7,25 @@ class ErrorHandler(commands.Cog):
 
     @commands.Cog.listener()
     async def on_command_error(self,ctx, error):
+        """
+        A basic command error handler for our bot. Most of the time, it will return the error message to the channel.
+
+        ### Parameters :
+        - None to be given by user. error is an error type.
+
+        ### Raises : 
+        - Error gets sent into ctx.channel.
+
+        ### Returns : 
+        - The error message.
+        """
         if isinstance(error, commands.CommandNotFound):
+            """Command doesn't exist/there is a typo in the command."""
             cmd = ctx.invoked_with #the command name
             cmds = [cmd.name for cmd in self.bot.commands] #Get all commands registered in the bot
             matches = "\n".join(get_close_matches(cmd, cmds,n=3)) #Get the three closest matches from the command name
             if len(matches) > 0:
-                return await ctx.send(f"Command \"{cmd}\" not found. Maybe you meant :\n{matches}")
+                return await ctx.send(f"Command \"{cmd}\" not found. Maybe you meant :\n{matches}") #close enough match from the wrong command name
             else:
                 return await ctx.send(f'Command "{cmd}" not found, use the help command to know what commands are available') #No match
         elif isinstance(error,commands.MissingPermissions):

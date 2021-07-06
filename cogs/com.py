@@ -8,6 +8,25 @@ class CustomOnMessage(commands.Cog):
     
     @commands.Cog.listener()
     async def on_message(self,message):
+        """
+        This function gets called every time someone sends a message.
+
+        ### Parameters : 
+        - None. Only the content of the message matters, but it isn't a real parameter.
+
+        ### Raises :
+        - No error would be raised. Either there is a message that needs to be sent, either not.
+
+        ### Returns :
+        - The message that gets called every time a member says this specific message.
+
+        ### Example : 
+
+        "hi" is linked to "hello" in the database.
+
+        Member says : hi
+        Bot says : hello
+        """
         if message.author == self.bot.user or not message.guild:
             return
         table = f"_{message.guild.id}"
@@ -19,6 +38,7 @@ class CustomOnMessage(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_join(self,guild:discord.Guild):
+        """Every time the bot joins a guild, we create a table to register the custom on_message that could be added."""
         async with aiosqlite.connect("databases/custom_on_message.db") as db:
             await db.execute(f"CREATE TABLE _{guild.id}(message_name TEXT,description TEXT);")
             await db.commit()

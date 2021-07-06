@@ -8,7 +8,15 @@ class ChuckNorris(commands.Cog):
 
     @commands.command(aliases=["cn","nc"])
     async def chucknorris(self,ctx,*args):
-        """Use this to get the best Chuck Norris jokes. Usage : $chucknorris (a category, available with cncategories)"""
+        """
+        Use this to get the best Chuck Norris jokes. Usage : $chucknorris (a category, available with cncategories)
+        
+        ### Parameters : 
+        - args : a category (available through $cncategories command)
+
+        ### Raises :
+        - KeyError : category doesn't exist.
+        """
         l = len(args)
         try:
             if l > 0:
@@ -34,7 +42,17 @@ class ChuckNorris(commands.Cog):
     
     @commands.command(aliases=["cncat","cnc","cncategoires"])
     async def cncategories(self,ctx):
-        """List the categories available from the API"""
+        """List the categories available from the API
+        
+        ### Parameters : 
+        - None.
+
+        ### Raises :
+        - Nothing.
+
+        ### Returns : 
+        - A rich embed with the categories inside.
+        """
         embedVar = discord.Embed(title="The categories of joke the bot can tell you.",color=0xaaffaa)
         async with aiohttp.ClientSession() as cs:
             async with cs.get(f"https://api.chucknorris.io/jokes/categories") as re: #Request to the API I'm using,random joke this time

@@ -7,6 +7,18 @@ class Logs(commands.Cog):
         self.bot = bot
 
     async def get_logs_channels(self,guild_id):
+        """
+        Retrieves the log channel ID for the guild.
+        
+        ### Parameters :
+        - guild_id : an integer, supposed to represent the ID of a discord.Guild object.
+
+        ### Raises : 
+        - Nothing.
+
+        ### Returns :
+        - The log channel ID if there is one in the database, else None.
+        """
         async with aiosqlite.connect("databases/main.db") as db:
             cursor = await db.execute("SELECT channel_id FROM logs_channels WHERE guild_id = (?);",(guild_id,))
             result = await cursor.fetchone()
@@ -16,22 +28,34 @@ class Logs(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_remove(self,guild):
+        """When the bot leaves a guild, we don't need to send a log message no more.So we just delete the log channel from the database."""
         async with aiosqlite.connect("databases/main.db") as db:
             await db.execute("DELETE FROM logs_channels WHERE guild_id = (?);",(guild.id,))
             await db.commit()
 
     @commands.group(invoke_without_command=True,aliases=["log"])
     async def logs(self,ctx):
+        """Does nothing without a subcommand."""
         if ctx.invoked_subcommand is None:
             await ctx.send("Subcommand required.")
     
     @logs.group()
     async def logchannel(self,ctx):
+        """Does nothing without a subcommand"""
         if ctx.invoked_subcommand is None:
             await ctx.send("Either add, edit or remove a log channel.")
     
     @logchannel.command()
-    async def add(self,ctx,text_channel:discord.TextChannel):
+    async def add(self,ctx,text_channel:discord.TextChannel=None):
+        text_channel = text_channel or ctx.channel
+        """Adds the ID of either the specified channel or the channel the command was called in.
+        
+        ### Parameters : 
+        - text_channel [Optional] : the text channel where log message will be sent in the future.
+
+        ### Returns :
+        - A message that confirms you your channel was correctly added to the database.
+        """
         await text_channel.send(f"{ctx.author} picked this channel to be the log channel. I will send everything I can track here (kick, ban, messages deleted,reactions added etc..).")
         async with aiosqlite.connect("databases/main.db") as db:
             await db.execute("INSERT INTO logs_channels VALUES(?,?);",(ctx.guild.id,text_channel.id))
@@ -39,13 +63,22 @@ class Logs(commands.Cog):
     
     @logchannel.command()
     async def remove(self,ctx):
-        await ctx.send(f"{ctx.author} decided to disable the logs in this channel. You can always re-add it back later !")
+        """Removes the log channel ID from the database. This means no log message will be sent after this command."""
+        await ctx.send(f"{ctx.author} decided to disable the logs in this server. You can always re-add it back later !")
         async with aiosqlite.connect("databases/main.db") as db:
             await db.execute("DELETE FROM logs_channels WHERE guild_id = (?);",(ctx.guild.id,))
             await db.commit()
     
     @commands.Cog.listener()
     async def on_message(self,message):
+        """On_message event to help us log everything.
+        
+        ### Parameters : 
+        - message : discord.Message object. This is automatically provided by the API, so no user input.
+
+        ### Returns :
+        - Send a log message with the content of the message into the log channel predefined by a command.
+        """
         if not message.author.bot and not message.is_system() and message.guild:
             channel_id = await self.get_logs_channels(message.guild.id)
             if channel_id:
