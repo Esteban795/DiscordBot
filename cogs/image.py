@@ -12,12 +12,78 @@ class ImageProcessing(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
 
+    def _swap1(self,args):
+        img = Image.open(args[0])
+        for i in range(img.width):
+            for j in range(img.height):
+                r,g,b = img.getpixel((i,j))
+                img.putpixel((i,j),(b,r,g))
+        return img
+        
+    def _swap2(self,args):
+        img = Image.open(args[0])
+        for i in range(img.width):
+            for j in range(img.height):
+                r,g,b = img.getpixel((i,j))
+                img.putpixel((i,j),(g,b,r))
+        return img
+
+    def _swap3(self,args):
+        img = Image.open(args[0])
+        for i in range(img.width):
+            for j in range(img.height):
+                r,g,b = img.getpixel((i,j))
+                img.putpixel((i,j),(b,g,r))
+        return img
+
+    def _swap4(self,args):
+        img = Image.open(args[0])
+        for i in range(img.width):
+            for j in range(img.height):
+                r,g,b = img.getpixel((i,j))
+                img.putpixel((i,j),(r,b,g))
+        return img
+
+    def _swap5(self,args):
+        img = Image.open(args[0])
+        for i in range(img.width):
+            for j in range(img.height):
+                r,g,b = img.getpixel((i,j))
+                img.putpixel((i,j),(g,r,b))
+        return img
+
+    def _whiteblack(self,args):
+        img = Image.open(args[0])
+        for i in range(img.width):
+            for j in range(img.height):
+                pixel = img.getpixel((i,j))
+                avg = sum(pixel)//3
+                if avg < 128:
+                    pixel = (0,0,0)
+                else:
+                    pixel = (255,255,255)
+                img.putpixel((i,j),pixel)
+        return img
+
+    def _sepia(self,args):
+        img = Image.open(args[0])
+        for i in range(img.width):
+            for j in range(img.height):
+                pixel = img.getpixel((i,j))
+                r,g,b = pixel
+                new_r = int((r * .393) + (g *.769) + (b * .189))
+                new_g = int((r * .349) + (g *.686) + (b * .168))
+                new_b = int((r * .272) + (g *.534) + (b * .131))
+                img.putpixel((i,j),(new_r,new_g,new_b))
+        return img
+
     def _solarize(self,args):
         n,img = args
-
+        image = Image.open(img).convert("RGB")
+        img = ImageOps.solarize(image,n)
+        return img
     def _posterize(self,args):
         n,img = args
-        print(f"n : {n}, img : {img}")
         image = Image.open(img).convert("RGB")
         img = ImageOps.posterize(image,n)
         return img
@@ -275,5 +341,78 @@ class ImageProcessing(commands.Cog):
         f = await self.run_image_processing(ctx,self._posterize,number,img)
         return
 
+    @filter.command()
+    async def solarize(self,ctx,number:int,img:str=None):
+        if not (0 < number < 256):
+            return await ctx.send("I need a number between 0 and 256 !")
+        try:
+            img, = await self.save_img(ctx.message)
+        except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+        f = await self.run_image_processing(ctx,self._solarize,number,img)
+        return
+    
+    @filter.command()
+    async def sepia(self,ctx,img:str=None):
+        try:
+            img, = await self.save_img(ctx.message)
+        except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+        f = await self.run_image_processing(ctx,self._sepia,img)
+        return
+
+    @filter.command(aliases=["wb"])
+    async def whiteblack(self,ctx,img:str=None):
+        try:
+            img, = await self.save_img(ctx.message)
+        except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+        f = await self.run_image_processing(ctx,self._whiteblack,img)
+        return
+
+    @filter.command()
+    async def swap1(self,ctx,img:str=None):
+        try:
+            img, = await self.save_img(ctx.message)
+        except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+        f = await self.run_image_processing(ctx,self._swap1,img)
+        return
+
+    @filter.command()
+    async def swap2(self,ctx,img:str=None):
+        try:
+            img, = await self.save_img(ctx.message)
+        except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+        f = await self.run_image_processing(ctx,self._swap2,img)
+        return
+
+    @filter.command()
+    async def swap3(self,ctx,img:str=None):
+        try:
+            img, = await self.save_img(ctx.message)
+        except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+        f = await self.run_image_processing(ctx,self._swap3,img)
+        return
+
+    @filter.command()
+    async def swap4(self,ctx,img:str=None):
+        try:
+            img, = await self.save_img(ctx.message)
+        except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+        f = await self.run_image_processing(ctx,self._swap4,img)
+        return
+
+    @filter.command()
+    async def swap5(self,ctx,img:str=None):
+        try:
+            img, = await self.save_img(ctx.message)
+        except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+        f = await self.run_image_processing(ctx,self._swap5,img)
+        return
 def setup(bot):
     bot.add_cog(ImageProcessing(bot))

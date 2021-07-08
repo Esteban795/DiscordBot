@@ -91,7 +91,7 @@ async def on_ready():
 async def echo(ctx,*,args):
     await ctx.send(args)
     
-initial_extensions = ["cogs.music","cogs.tags","cogs.eh","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.xp","cogs.mod","cogs.chucknorris","cogs.reddit","cogs.python","cogs.image"]
+initial_extensions = ["cogs.music","cogs.tags","cogs.eh","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.xp","cogs.mod","cogs.chucknorris","cogs.reddit","cogs.python","cogs.image","cogs.gh"]
 
 for i in initial_extensions:
     try:
