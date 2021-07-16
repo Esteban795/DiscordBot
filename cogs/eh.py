@@ -20,7 +20,7 @@ class ErrorHandler(commands.Cog):
         - The error message.
         """
         if isinstance(error, commands.CommandNotFound):
-            """Command doesn't exist/there is a typo in the command."""
+            """Command doesn't exist"""
             cmd = ctx.invoked_with #the command name
             cmds = [cmd.name for cmd in self.bot.commands] #Get all commands registered in the bot
             matches = "\n".join(get_close_matches(cmd, cmds,n=3)) #Get the three closest matches from the command name
@@ -40,8 +40,8 @@ class ErrorHandler(commands.Cog):
             await ctx.send(error)
         elif isinstance(error,commands.NoPrivateMessage):
             await ctx.send(error)
-        elif isinstance(error,commands.CommandError):
-            await ctx.send(error)
+        elif isinstance(error,commands.CheckFailure):
+            await ctx.send(error,allowed_mentions=self.bot.allowed_mentions)
         else:
             raise error
 

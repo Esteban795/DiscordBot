@@ -24,7 +24,6 @@ class Github(commands.Cog):
             return None
 
     def url_converter(self,url:str)-> str:
-        print(url)
         return url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
 
     @commands.group(invoke_without_command=True)
