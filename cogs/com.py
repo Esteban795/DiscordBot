@@ -1,6 +1,4 @@
-import discord
 from discord.ext import commands
-import aiosqlite
 
 class CustomOnMessage(commands.Cog):
     def __init__(self,bot):
@@ -29,62 +27,44 @@ class CustomOnMessage(commands.Cog):
         """
         if message.author == self.bot.user or not message.guild:
             return
-        table = f"_{message.guild.id}"
-        async with aiosqlite.connect("databases/custom_on_message.db") as db:
-            cursor = await db.execute(f"SELECT description FROM {table} WHERE message_name = ?",(message.content,)) #Selects what the bot needs to say if the content of the message is registered in the db, else it is None.
+        async with self.bot.db.execute(f"SELECT call FROM custom_on_message WHERE message = ? AND guild_id = ?",(message.content,message.guild.id)) as cursor: #Selects what the bot needs to say if the content of the message is registered in the db, else it is None.
             result = await cursor.fetchone()
             if result: 
                 await message.channel.send(result[0])
 
-    @commands.Cog.listener()
-    async def on_guild_join(self,guild:discord.Guild):
-        """Every time the bot joins a guild, we create a table to register the custom on_message that could be added."""
-        async with aiosqlite.connect("databases/custom_on_message.db") as db:
-            await db.execute(f"CREATE TABLE _{guild.id}(message_name TEXT,description TEXT);")
-            await db.commit()
-    
-    @commands.Cog.listener()
-    async def on_guild_remove(self,guild):
-        """Once the bot isn't on the server anymore, no reason to keep track of the custom on_message reactions"""
-        async with aiosqlite.connect("databases/custom_on_message.db") as db:
-            await db.execute(f"DROP TABLE _{guild.id};")
-            await db.commit()  
-    
     @commands.group(aliases=["COM","com"])
-    async def CustomOnMessage(self,ctx):
+    async def custom_on_message(self,ctx):
         """Nothing special here. You need to use subcommands."""
         if ctx.invoked_subcommand is None:
             return await ctx.send("Subcommand required.")
     
-    @CustomOnMessage.command()
-    async def add(self,ctx,trigger,*,message):
+    @custom_on_message.command()
+    async def add(self,ctx,message,*,call):
         """
         Lets you add custom on_message to the bot. 
-        /!\ This is server dependant, which means you can't use a custom on_message defined on a certain server on another server.
-        /!\ Customs on_message AND what the bot will say MUST be quoted if they are more than one word.
+        ### /!\ This is server dependant, which means you can't use a custom on_message defined on a certain server on another server.
+        ### /!\ Customs on_message AND what the bot will say MUST be quoted if they are more than one word.
 
-        Usage example : 
+        ### Usage example : 
         $CustomOnMessage add "You all are beautiful" "Thanks, you too !"
 
         or 
 
         $com add hello hey
         """
-        guild_id = f"_{ctx.guild.id}" #Table name of the database where the custom on_message are registered.
-        async with aiosqlite.connect("databases/custom_on_message.db") as db:
-            cursor = await db.execute(f"SELECT message_name,description FROM {guild_id} WHERE message_name = ?",(trigger,))
-            check_result = await cursor.fetchone()
-            if check_result: #The custom on message already calls another message.
-                return await ctx.send(f"'{trigger}' already calls an other message ! Pick another name (this is case sensitive).")
-            await db.execute(f"INSERT INTO {guild_id} VALUES(?,?)",(trigger,message))
-            await db.commit()
-        await ctx.send(f"Got it ! If anyone says '{trigger}', I will answer '{message}'.")
+        check_if_exists = await self.bot.db.execute(f"SELECT message FROM custom_on_message WHERE message = ? AND guild_id = ?",(message,ctx.guild.id))
+        exists = await check_if_exists.fetchone()
+        if exists: #The custom on message already calls another message.
+            return await ctx.send(f"'{message}' already calls an other message ! Pick another name (this is case sensitive).")
+        await self.bot.db.execute(f"INSERT INTO custom_on_message VALUES(?,?,?)",(message,call,ctx.guild.id))
+        await self.bot.db.commit()
+        await ctx.send(f"Got it ! If anyone says '{message}', I will answer '{call}'.")
     
-    @CustomOnMessage.command()
-    async def remove(self,ctx,trigger):
+    @custom_on_message.command()
+    async def remove(self,ctx,message):
         """
         Lets you remove customs on_message from the bot.
-        /!\ This is server dependant, which means you can't use a custom on_message defined on a certain server on another server.
+        ### /!\ This is server dependant, which means you can't use a custom on_message defined on a certain server on another server.
 
         ### Usage example :
         Let's say you used this command to add a custom on message previously.
@@ -97,42 +77,38 @@ class CustomOnMessage(commands.Cog):
 
         To be more global, you need to use what calls the bot's answer.
         """
-        guild_id = f"_{ctx.guild.id}"
-        async with aiosqlite.connect("databases/custom_on_message.db") as db:
-            cursor = await db.execute(f"SELECT message_name,description FROM {guild_id} WHERE message_name = ?",(trigger,))
-            check_result = await cursor.fetchone()
-            if not check_result:
-                return await ctx.send("Uhm. Actually, this message doesn't call any message from me. Can't remove something that doesn't exist, right ?")
-            await db.execute(f"DELETE FROM {guild_id} WHERE message_name = ?",(trigger,))
-            await db.commit()
-        await ctx.send(f"Got it. I won't answer to '{trigger}' anymore !")
+        check_if_exists = await self.bot.db.execute(f"SELECT message FROM custom_on_message WHERE message = ? AND guild_id = ?",(message,ctx.guild.id))
+        exists = await check_if_exists.fetchone()
+        if not exists:
+            return await ctx.send("Uhm. Actually, this message doesn't call any message from me. Can't remove something that doesn't exist, right ?")
+        await self.bot.db.execute(f"DELETE FROM custom_on_message WHERE message = ? AND guild_id = ?",(message,ctx.guild.id))
+        await self.bot.db.commit()
+        await ctx.send(f"Got it. I won't answer to '{message}' anymore !")
 
-    @CustomOnMessage.command()
-    async def edit(self,ctx,trigger,*,message):
+    @custom_on_message.command()
+    async def edit(self,ctx,message,*,call):
         """
         Lets you edit custom on_message from the bot.
-        /!\ This is server dependant, which means you can't use a custom on_message defined on a certain server on another server.
+        #### /!\ This is server dependant, which means you can't use a custom on_message defined on a certain server on another server.
 
-        Usage example :
+        ### Usage example :
         Let's say you used this command to add a custom on message previously.
         
-        $com add hello hey
+        - $com add hello hey
 
         To edit it, you need to use :
 
-        $com edit hello hi
+        - $com edit hello hi
 
         To be more global, you need to use what calls the bot's answer.
         """
-        guild_id = f"_{ctx.guild.id}"
-        async with aiosqlite.connect("databases/custom_on_message.db") as db:
-            cursor = await db.execute(f"SELECT message_name,description FROM {guild_id} WHERE message_name = ?",(trigger,))
-            check_result = await cursor.fetchone()
-            if not check_result:
-                return await ctx.send("Uhm. Actually, this message doesn't call any message from me. Can't edit something that doesn't exist, right ?")
-            await db.execute(f"UPDATE {guild_id} SET description = ? WHERE message_name = ?",(message,trigger))
-            await db.commit()
-        await ctx.send(f"Just edited what '{trigger}' calls. Now calls '{message}' ! ")
+        check_if_exists = await self.bot.db.execute(f"SELECT message FROM custom_on_message WHERE message = ? AND guild_id = ?",(message,ctx.guild.id))
+        exists = await check_if_exists.fetchone()
+        if not exists:
+            return await ctx.send("Uhm. Actually, this message doesn't call any message from me. Can't edit something that doesn't exist, right ?")
+        await self.bot.db.execute(f"UPDATE custom_on_message SET call = ? WHERE message = ? and guild_id = ?",(call,message,ctx.guild.id))
+        await self.bot.db.commit()
+        await ctx.send(f"Just edited what '{message}' calls. Now calls '{call}' ! ")
 
 def setup(bot):
     bot.add_cog(CustomOnMessage(bot))
