@@ -1,5 +1,4 @@
 import aiohttp
-from discord.embeds import Embed
 from dotenv import load_dotenv
 import discord
 import os
