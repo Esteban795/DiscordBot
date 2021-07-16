@@ -227,7 +227,7 @@ class ImageProcessing(commands.Cog):
         return
 
     @commands.command()
-    async def resize(self,ctx,width:int,lien:str=None):
+    async def resize(self,ctx,width:int,url:str=None):
         try:
             img, = await self.save_img(ctx.message)
         except TypeError:
@@ -236,7 +236,7 @@ class ImageProcessing(commands.Cog):
         return
 
     @commands.command()
-    async def rotate(self,ctx,angle:int,lien:str=None):
+    async def rotate(self,ctx,angle:int,url:str=None):
         try:
             img, = await self.save_img(ctx.message)
         except TypeError:
