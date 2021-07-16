@@ -18,19 +18,13 @@ If you also want voice support :
 python3 -m pip install -U discord.py[voice]
 ```
 
-- This bot requires you to have a bot token stored in a .env file. It should look like :
+- This bot requires you to have a bot token stored in a .env file. You can get one on [discord developer portal](https://discord.com/developers/applications) It should look like :
 
 ```txt
 BOT_TOKEN = [your bot token]
 ```
 
-- You also may need to install the "requests" library if you didn't use it before !
-
-```ps
-python3 -m pip install -U request.py
-```
-
-### **The bot prefix is : $. I don't plan on changing it, but I will edit this line if it ever happens !**
+### **The bot prefix is : $. I don't plan on changing it, but you can edit it per server**
 
 
 
