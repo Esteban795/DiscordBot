@@ -5,7 +5,7 @@ Welcome to my first Discord Bot ! Here you can find the source code I've written
 
 ### Requirements
 
-- This bot needs you to first install discord.py :
+- This bot needs you to first install [discord.py](https://pypi.org/project/discord.py/) :
 
 For a basic installation :
 
