@@ -9,6 +9,7 @@ class OwnerOnly(commands.Cog):
         if ctx.author.id != 475332124711321611:
             raise commands.NotOwner("You must be owner to use any commands of the OwnerOnly cog.")
         return True
+        
     @commands.command()
     async def spam(ctx,member:discord.Member=None):
         member = member or ctx.author
