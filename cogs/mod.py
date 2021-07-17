@@ -1,15 +1,44 @@
-import re
-import aiosqlite
 import asyncio
 import discord
-from discord.ext import commands
-from discord.member import VoiceState
+from discord.errors import HTTPException
+from discord.ext import commands,tasks
 from bot import TimeConverter,get_prefix
 import datetime
+
 class Moderation(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
-    
+        self.unban_loop.start()
+        self.unmute_loop.start()
+
+    @tasks.loop(minutes=1)
+    async def unban_loop(self):
+        await self.bot.wait_until_ready()
+        async with self.bot.db.execute("SELECT member_id,guild_id FROM tempban WHERE unban_time <= ?",(datetime.datetime.utcnow(),)) as cursor:
+            async for row in cursor:
+                member_id,guild_id = row
+                guild = self.bot.get_guild(guild_id)
+                user = discord.Object(id=member_id)
+                await guild.unban(user)
+                await self.bot.db.execute("DELETE FROM tempban WHERE guild_id = ? AND member_id = ?",(guild_id,member_id))
+                await self.bot.db.commit()
+
+    @tasks.loop(minutes=1)
+    async def unmute_loop(self):
+        await self.bot.wait_until_ready()
+        async with self.bot.db.execute("SELECT member_id,guild_id FROM tempmute WHERE unmute_time <= ?",(datetime.datetime.utcnow(),)) as cursor:
+            async for row in cursor:
+                member_id,guild_id = row
+                guild = self.bot.get_guild(guild_id)
+                muted_role = discord.utils.get(guild.roles,name="Muted") or discord.utils.get(guild.roles,name="muted")
+                member = guild.get_member(member_id)
+                try:
+                    await member.remove_roles(muted_role)
+                except HTTPException:
+                    pass
+                await self.bot.db.execute("DELETE FROM tempmute WHERE guild_id = ? AND member_id = ?",(guild_id,member_id))
+                await self.bot.db.commit()
+
     def bot_has_higher_role(self,member):
         if member.top_role.position < member.guild.me.top_role.position:
             return True
@@ -203,7 +232,7 @@ class Moderation(commands.Cog):
             await ctx.send(f"Banned {member} for {time} seconds.")
             unban_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=time)
             await self.bot.db.execute("INSERT INTO tempban VALUES(?,?,?)",(member.id,ctx.guild.id,unban_time))
-            await self.db.commit()
+            await self.bot.db.commit()
 
     @time.command()
     async def match(self,ctx,time:TimeConverter,reason,*banned_words):
