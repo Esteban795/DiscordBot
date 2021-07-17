@@ -49,19 +49,19 @@ class Reddit(commands.Cog):
         - a discord.Embed object, filled with every infos about this post 
         (title, author,subreddit upvotes,number of comments)
         """
-        youtube_video_link_regex = re.compile(r"(https://www.youtube.com/watch|https://clips.twitch.tv/|https://reddit.com/link/o4v2hm/video/|https://www.twitch.tv/(?:\w{0,255})/clip)") #Any link that looks like this ? It's a video then, and can't play it throuh embed
+        video_link_regex = re.compile(r"(https://www.youtube.com/watch|https://clips.twitch.tv/|https://reddit.com/link/o4v2hm/video/|https://www.twitch.tv/(?:\w{0,255})/clip)") #Any link that looks like this ? It's a video then, and can't play it throuh embed
         author = data["author"]
         num_comments = data.get("num_comments")
         content = data["selftext"]
         img_url = data["url"]
-        is_video_link = youtube_video_link_regex.findall(img_url) #check for videos link
+        is_video_link = video_link_regex.findall(img_url) #check for videos link
         is_video = data["is_video"]
         if is_video_link:
             is_video = True
-        title = f'{data["subreddit_name_prefixed"]} - Post by u/{author}\n\n{data["title"]}' #From there, just embed building
+        title = f'{data["subreddit_name_prefixed"]} - Post by u/{author}\n\n{data["title"]}'  #From there, just embed building
         link = f"https://www.reddit.com{data['permalink']}"
         meme_embed = discord.Embed(olor=0xff0000)
-        meme_embed.set_author(name=title,url=link)
+        meme_embed.set_author(name=(title if len(title) < 250 else f"{title[:250]}..."),url=link)
         meme_embed.set_footer(text=f"{data['ups']} upvotes | {num_comments} comments.")
         if content:
             meme_embed.description = content if len(content) < 250 else content[:250] + "..."
@@ -80,7 +80,7 @@ class Reddit(commands.Cog):
         2) Depending on subreddits, the API response is a list or a dict, but both contains the same
         informations. If the response is a list, I only use the first indexed element, which is the 
         random post.
-        3) I pass the informations into a function that returns an embed.
+        3) I pass the informations into a function that makes a request to the Reddit API.
         """
         if ctx.invoked_subcommand is None:
             url = self.post_type[ctx.invoked_with] #Get the right URL according to the command used
@@ -113,15 +113,16 @@ class Reddit(commands.Cog):
     @reddit.command()
     async def top(self,ctx,subreddit:str="meme"):
         """
-        Works the same as reddit command. The difference is that it gets top posts from the subreddit, not random one.
+        Works the same as reddit command. The difference is that it gets top post from the subreddit, not random one.
         """
         url = self.post_type[ctx.invoked_with]
         await self.reddit_request(ctx,url,subreddit) #API request
     
     @reddit.command()
     async def display(self,ctx,url:str):
-        await ctx.message.delete()
-        regex_subreddit = re.compile(r"r/(\w{1,255})/")
+        """Allows you to display a reddit post with the bot's way to display it, instead of having the auto embed given by reddit."""
+        await ctx.message.delete() #We remove the $reddit display [url] message
+        regex_subreddit = re.compile(r"https://www.reddit.com/r/(\w{1,255})/") #Gets the subreddit
         subreddit = regex_subreddit.findall(url)
         if not subreddit:
             return await ctx.send(f"Invalid link {ctx.author.mention}. Please provide a correct one !")

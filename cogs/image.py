@@ -184,7 +184,7 @@ class ImageProcessing(commands.Cog):
         w,h = image.size
         ratio = h/w
         newsize = (width,int(width * ratio))
-        new_image = image.resize(newsize)
+        new_image = image.resize(newsize,Image.ANTIALIAS)
         return new_image
 
     def _rotate(self,args):
@@ -205,10 +205,9 @@ class ImageProcessing(commands.Cog):
                 url = msg.attachments.pop(0).url
             else:
                 return
-            async with aiohttp.ClientSession() as cs:
-                async with cs.get(url) as image:
-                    buffer = io.BytesIO(await image.read())
-                    buffer.seek(0)
+            async with self.bot.cs.get(url) as image:
+                buffer = io.BytesIO(await image.read())
+                buffer.seek(0)
             l.append(buffer)
         return l
 
@@ -216,7 +215,7 @@ class ImageProcessing(commands.Cog):
         t = functools.partial(func,args)
         m = await self.bot.loop.run_in_executor(None,t)
         bytes_io = io.BytesIO()
-        m.save(bytes_io,"PNG")
+        m.save(bytes_io,"PNG",quality=95)
         bytes_io.seek(0)
         f = discord.File(fp=bytes_io,filename="test.png")
         try:
@@ -414,5 +413,15 @@ class ImageProcessing(commands.Cog):
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._swap5,img)
         return
+    
+    @filter.command()
+    async def thumbnail(self,ctx,img:str=None):
+        try:
+            img, = await self.save_img(ctx.message)
+        except TypeError:
+                return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
+        f = await self.run_image_processing(ctx,self._thumbnail,img)
+        return
+
 def setup(bot):
     bot.add_cog(ImageProcessing(bot))

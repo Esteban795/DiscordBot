@@ -35,6 +35,7 @@ class Github(commands.Cog):
 
     @github.command()
     async def display(self,ctx,url:str):
+        await ctx.message.edit(suppress=True)
         is_valid = self.valid_url(url)
         if not is_valid:
             return await ctx.send("Link is invalid. Please provide a link like this one : `https://github.com/Esteban795/DiscordBot/blob/main/bot.py`")
