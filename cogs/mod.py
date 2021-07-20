@@ -1,6 +1,6 @@
 import asyncio
 import discord
-from discord.errors import HTTPException
+from discord.errors import Forbidden, HTTPException
 from discord.ext import commands,tasks
 from bot import TimeConverter,get_prefix
 import datetime
@@ -14,30 +14,39 @@ class Moderation(commands.Cog):
     @tasks.loop(minutes=1)
     async def unban_loop(self):
         await self.bot.wait_until_ready()
-        async with self.bot.db.execute("SELECT member_id,guild_id FROM tempban WHERE unban_time <= ?",(datetime.datetime.utcnow(),)) as cursor:
+        sql = "SELECT member_id,guild_id,ban_id FROM bans WHERE unban_time IS NOT NULL AND unban_time <= ? AND unbanned = 0;"
+        async with self.bot.db.execute(sql,(datetime.datetime.utcnow().replace(microsecond=0),)) as cursor:
             async for row in cursor:
-                member_id,guild_id = row
+                member_id,guild_id,ban_id = row
                 guild = self.bot.get_guild(guild_id)
                 user = discord.Object(id=member_id)
-                await guild.unban(user)
-                await self.bot.db.execute("DELETE FROM tempban WHERE guild_id = ? AND member_id = ?",(guild_id,member_id))
-                await self.bot.db.commit()
+                try:
+                    await guild.unban(user,reason="Ban duration ended.")
+                except Forbidden:
+                    pass
+                except HTTPException:
+                    pass
+                else:
+                    await self.bot.db.execute("UPDATE bans SET unbanned = 1,unban_reason = 'Ban duration ended.' WHERE ban_id = ?",(ban_id,))
+                    await self.bot.db.commit()
 
     @tasks.loop(minutes=1)
     async def unmute_loop(self):
         await self.bot.wait_until_ready()
-        async with self.bot.db.execute("SELECT member_id,guild_id FROM tempmute WHERE unmute_time <= ?",(datetime.datetime.utcnow(),)) as cursor:
+        sql = "SELECT member_id,guild_id,mute_id FROM mutes WHERE unmute_time IS NOT NULL AND unmute_time <= ? AND unmuted = 0;"
+        async with self.bot.db.execute(sql,(datetime.datetime.utcnow().replace(microsecond=0),)) as cursor:
             async for row in cursor:
-                member_id,guild_id = row
+                member_id,guild_id,mute_id = row
                 guild = self.bot.get_guild(guild_id)
                 muted_role = discord.utils.get(guild.roles,name="Muted") or discord.utils.get(guild.roles,name="muted")
                 member = guild.get_member(member_id)
                 try:
-                    await member.remove_roles(muted_role)
+                    await member.remove_roles(muted_role,reason="Mute duration ended.")
                 except HTTPException:
                     pass
-                await self.bot.db.execute("DELETE FROM tempmute WHERE guild_id = ? AND member_id = ?",(guild_id,member_id))
-                await self.bot.db.commit()
+                else:
+                    await self.bot.db.execute("UPDATE mutes SET unmuted = 1,unmute_reason = 'Mute time duration ended.' WHERE mute_id = ?",(mute_id,))
+                    await self.bot.db.commit()
 
     def bot_has_higher_role(self,member):
         if member.top_role.position < member.guild.me.top_role.position:
@@ -155,20 +164,20 @@ class Moderation(commands.Cog):
             await ctx.send(f"Muted {member} for {time}s" if time else "Muted {}")
             if time:
                 mute_duration = datetime.timedelta(seconds=time)
-                already_muted = await self.bot.db.execute("SELECT unmute_time FROM tempmute WHERE member_id = ? AND guild_id = ?",(member.id,member.guild.id))
+                already_muted = await self.bot.db.execute("SELECT unmute_time FROM mutes WHERE member_id = ? AND guild_id = ?",(member.id,member.guild.id))
                 result_already_muted = await already_muted.fetchone()
                 if result_already_muted:
                     prev_unmute_time = datetime.datetime.strptime(result_already_muted[0])
                     new_unmute_time = prev_unmute_time + mute_duration
-                    await self.bot.db.execute("UPDATE tempmute SET unmute_time = ? WHERE member_id = ? AND guild_id = ?",(new_unmute_time,member.id,member.guild.id))
+                    await self.bot.db.execute("UPDATE mutes SET unmute_time = ? WHERE member_id = ? AND guild_id = ?",(new_unmute_time.replace(microsecond=0),member.id,member.guild.id))
                 else:
                     unmute_time = mute_duration + datetime.datetime.utcnow()
-                    await self.bot.db.execute("INSERT INTO tempmute VALUES(?,?,?);",(member.id,member.guild.id,unmute_time))
+                    await self.bot.db.execute("INSERT INTO mutes(member_id,guild_id,unmute_time) VALUES(?,?,?);",(member.id,member.guild.id,unmute_time.replace(microsecond=0)))
                 await self.bot.db.commit()
 
     @commands.command(aliases=["demute"])
     @commands.has_permissions()
-    async def unmute(self,ctx,member:discord.Member):
+    async def unmute(self,ctx,member:discord.Member,*,reason="Moderator."):
         """Removes the Muted role from the member. They now have the permission to speak/write"""
         muted_role = discord.utils.get(ctx.guild.roles,name="Muted") or discord.utils.get(ctx.guild.roles,name="muted")
         if not muted_role:
@@ -195,16 +204,20 @@ class Moderation(commands.Cog):
 
     @commands.group(invoke_without_command=True)
     @commands.has_permissions(ban_members = True)
+    @commands.bot_has_guild_permissions(ban_members=True)
     async def ban(self,ctx,member:discord.Member,*,reason="Not specified."):
         """Bans a member from the server. This is a group, which means you CAN use subcommands for more specific ban options. 
         The current command just bans a member from the server, and sends them a DM with the reason they got banned"""
         if self.bot_has_higher_role(member):
             if ctx.invoked_subcommand is None: #Check if a subcommand is passed in.
-                embedVar = discord.Embed(title="Uh oh. Looks like you did something QUITE bad !",color=0xff0000)
-                embedVar.add_field(name=f"You were banned from {ctx.guild} by {ctx.author}.",value=f"Reason : {reason}")
-                embedVar.set_footer(text=f"Requested by {ctx.author}.")
-                await member.send(embed=embedVar)
-                await member.ban(reason=reason) 
+                try:
+                    await member.ban(reason=reason)
+                except HTTPException:
+                    return await ctx.send("Unknow error occured.")
+                else:
+                    await self.bot.db.execute("INSERT INTO bans(member_id,guild_id,ban_reason) VALUES(?,?,?)",(member.id,ctx.guild.id,reason))
+                    await self.bot.db.commit()
+                    return await ctx.send(f"Banned {member}.") 
 
     @ban.command()
     async def match(self,ctx,reason,*banned_words):
@@ -216,9 +229,15 @@ class Moderation(commands.Cog):
                 continue
             for word in banned_words:
                 if word in message.content:
-                    await message.author.ban(reason=reason)
-                    count += 1
-                    break
+                    try:
+                        await message.author.ban(reason=reason)
+                    except Forbidden:
+                        await ctx.send(f"Can't ban {message.author}. (Higher role)")
+                    else:
+                        await self.bot.db.execute("INSERT INTO bans(member_id,guild_id,ban_reason) VALUES(?,?,?)",(message.author.id,ctx.guild.id,reason))
+                        await self.bot.db.commit()
+                        count += 1
+                        break
         if count:
             await ctx.send((f'Done ! I banned {count} people.' if count > 1 else "Done ! I banned one person."))
         else:
@@ -228,11 +247,16 @@ class Moderation(commands.Cog):
     async def time(self,ctx,member:discord.Member,time:TimeConverter,*,reason="Not specified."):
         """Basically a ban command where you can add a duration. Once it's over, the bot automatically unbans the member"""
         if ctx.invoked_subcommand is None:
-            await member.ban(reason=reason)
-            await ctx.send(f"Banned {member} for {time} seconds.")
-            unban_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=time)
-            await self.bot.db.execute("INSERT INTO tempban VALUES(?,?,?)",(member.id,ctx.guild.id,unban_time))
-            await self.bot.db.commit()
+            try:
+                await member.ban(reason=reason)
+            except Forbidden:
+                await ctx.send(f"Can't ban {member}. (Higher role)")
+            else:
+                await ctx.send(f"Banned {member} for {time} seconds.")
+                unban_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=time)
+                await self.bot.db.execute("INSERT INTO bans(member_id,guild_id,ban_reason,unban_time) VALUES(?,?,?,?)",(member.id,ctx.guild.id,reason,unban_time.replace(microsecond=0)))
+                await self.bot.db.commit()
+                await member.ban(reason=reason)
 
     @time.command()
     async def match(self,ctx,time:TimeConverter,reason,*banned_words):
@@ -244,17 +268,20 @@ class Moderation(commands.Cog):
                 continue
             for word in banned_words:
                 if word in message.content:
-                    await message.author.ban(reason=reason)
-                    unban_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=time)
-                    await self.bot.db.execute("INSERT INTO tempban VALUES(?,?,?)",(message.author,ctx.guild.id,unban_time))
-                    count += 1
-                    break
+                    try:
+                        await message.author.ban(reason=reason)
+                    except Forbidden:
+                        await ctx.send(f"Can't ban {message.author}. (Higher role)")
+                    else:
+                        unban_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=time)
+                        await self.bot.db.execute("INSERT INTO bans(member_id,guild_id,reason,unban_time) VALUES(?,?,?)",(message.author,ctx.guild.id,reason,unban_time.replace(microsecond=0)))
+                        await self.bot.db.commit()
+                        count += 1
+                        break
         if count:
             await ctx.send((f'Done ! I banned {count} people.' if count > 1 else "Done ! I banned one person."))
         else:
             await ctx.send("No one said those awful words.")
-        await self.bot.db.commit()
-
 
     @commands.command(aliases=["u","unbna"])
     @commands.has_permissions(ban_members = True)
