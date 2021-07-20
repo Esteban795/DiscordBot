@@ -27,17 +27,16 @@ class Reddit(commands.Cog):
         ### Returns :
         - If the request went ok, then this method calls another method to build the discord.Embed object.
         """
-        async with aiohttp.ClientSession() as cs: #Async GET request
-            async with cs.get(url.format(subreddit)) as r:
-                res = await r.json()
-            if isinstance(res,list): #Sometimes, API returns a list sometimes a dict. I'm checking which one each calls
-                if not res[0]["data"]["dist"] or res[0].get("error"): #Check if any post could be found
-                    return await ctx.send("Couldn't find any posts on this subreddit. Try a valid name !")
-                post_data = res[0]["data"]["children"][0]["data"] #
-            else:
-                if not res["data"]["dist"] or res.get("error"):
-                    return await ctx.send("Couldn't find any posts on this subreddit. Try a valid name !")
-                post_data = res["data"]["children"][0]["data"]
+        async with self.bot.cs.get(url.format(subreddit)) as r:
+            res = await r.json()
+        if isinstance(res,list): #Sometimes, API returns a list sometimes a dict. I'm checking which one each calls
+            if not res[0]["data"]["dist"] or res[0].get("error"): #Check if any post could be found
+                return await ctx.send("Couldn't find any posts on this subreddit. Try a valid name !")
+            post_data = res[0]["data"]["children"][0]["data"] #
+        else:
+            if not res["data"]["dist"] or res.get("error"):
+                return await ctx.send("Couldn't find any posts on this subreddit. Try a valid name !")
+            post_data = res["data"]["children"][0]["data"]
         return await self.create_reddit_embed(ctx,post_data)
 
     async def create_reddit_embed(self,ctx,data:dict):
