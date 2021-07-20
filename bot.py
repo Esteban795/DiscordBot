@@ -7,7 +7,6 @@ import aiosqlite
 from datetime import date, datetime
 import re
 
-
 time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])") #Detects patterns like "12d","10m"
 time_dict = {"h":3600, "s":1, "m":60, "d":86400}
 
@@ -93,7 +92,7 @@ async def echo(ctx,*,args):
     await ctx.send(args)
 
    
-initial_extensions = ["cogs.xp","cogs.music","cogs.tags","cogs.eh","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.mod","cogs.chucknorris","cogs.reddit","cogs.python","cogs.image","cogs.gh"]
+initial_extensions = ["cogs.remind","cogs.xp","cogs.music","cogs.tags","cogs.eh","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.mod","cogs.chucknorris","cogs.reddit","cogs.python","cogs.image","cogs.gh"]
 
 for i in initial_extensions:
     try:
@@ -102,10 +101,9 @@ for i in initial_extensions:
         print(f"Couldn't load {i}.")
 
 async def connect_db():
-    async with aiohttp.ClientSession() as cs:
-        bot.cs = cs
-        bot.db = await aiosqlite.connect("databases/main.db")
-        bot.no_mentions = discord.AllowedMentions.none()
+    bot.cs = aiohttp.ClientSession()
+    bot.db = await aiosqlite.connect("databases/main.db")
+    bot.no_mentions = discord.AllowedMentions.none()
 
 bot.loop.run_until_complete(connect_db())
 bot.run(TOKEN)

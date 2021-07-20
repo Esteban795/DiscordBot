@@ -1,3 +1,4 @@
+from cogs.music import InvalidVoiceChannel
 from discord.ext import commands
 from difflib import get_close_matches
 
@@ -42,6 +43,8 @@ class ErrorHandler(commands.Cog):
             await ctx.send(error)
         elif isinstance(error,commands.CheckFailure):
             await ctx.send(error,allowed_mentions=self.bot.allowed_mentions)
+        elif isinstance(error,InvalidVoiceChannel):
+            await ctx.send(error)
         else:
             raise error
 
