@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-import aiohttp
 import re
 
 class Reddit(commands.Cog):

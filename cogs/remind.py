@@ -29,8 +29,13 @@ class Reminder(commands.Cog):
             async for row in cursor:
                 try:
                     guild = self.bot.get_guild(row[1])
+                
+                    if not guild:
+                        continue
                     member = guild.get_member(row[0])
-                    channel = self.bot.get_channel(row[3])
+                    if not member:
+                        continue
+                    channel = self.bot.get_channel(row[3]) or member
                     await channel.send(f"Alright {member.mention}, you asked me to remind this : {row[2]}")
                 except AttributeError:
                     await self.bot.db.execute("DELETE FROM reminders WHERE guild_id = ?",(row[1],))
@@ -133,7 +138,7 @@ class Reminder(commands.Cog):
                 l.append(f"{row[1]}. {row[0]} : \U0000274c")
         if len(l) == 0:
             l = ["No pending to-dos !"]
-        em = discord.Embed(title=f"{ctx.author}'s to do list (pending only).",color=0xaaffaa,timestamp=datetime.datetime.utcnow())
+        em = discord.Embed(title=f"{ctx.author}'s to do list (pending only).T",color=0xaaffaa,timestamp=datetime.datetime.utcnow())
         joined = "\n".join(l)
         em.add_field(name="\u2800",value=f"```md\n{joined}\n```")
         return await ctx.send(embed=em)

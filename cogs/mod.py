@@ -11,42 +11,60 @@ class Moderation(commands.Cog):
         self.unban_loop.start()
         self.unmute_loop.start()
 
-    @tasks.loop(minutes=1)
+    async def unban_task(self,unbanning):
+        ban_id,member_id,guild_id,unban_time = unbanning
+        t = datetime.datetime.strptime(unban_time)
+        await discord.utils.sleep_until(unban_time,"%Y-%m-%d %H:%M:%S")
+        guild = self.bot.get_guild(guild_id)
+        if guild is None or guild.unavailable:
+            return
+        banned = discord.Object(id=member_id)
+        try:
+            await guild.unban(banned,reason="Ban duration is up.")
+        except discord.NotFound:
+            await self.bot.db.execute("DELETE FROM bans WHERE ban_id = ?",(ban_id,))
+        else:
+            await self.bot.db.execute("UPDATE bans SET unbanned = 1,unban_reason = 'Ban duration is up' WHERE ban_id = ?",(ban_id,))            
+        await self.bot.db.commit()
+        
+    @tasks.loop(seconds=30)
     async def unban_loop(self):
         await self.bot.wait_until_ready()
-        sql = "SELECT member_id,guild_id,ban_id FROM bans WHERE unban_time IS NOT NULL AND unban_time <= ? AND unbanned = 0;"
-        async with self.bot.db.execute(sql,(datetime.datetime.utcnow().replace(microsecond=0),)) as cursor:
+        sql = "SELECT ban_id,member_id,guild_id,unban_time FROM bans WHERE unban_time IS NOT NULL AND unbanned = 0 AND CAST((julianday(unban_time) - julianday('now'))*86400 AS INTEGER) <= 30"
+        async with self.bot.db.execute(sql) as cursor:
             async for row in cursor:
-                member_id,guild_id,ban_id = row
-                guild = self.bot.get_guild(guild_id)
-                user = discord.Object(id=member_id)
-                try:
-                    await guild.unban(user,reason="Ban duration ended.")
-                except Forbidden:
-                    pass
-                except HTTPException:
-                    pass
-                else:
-                    await self.bot.db.execute("UPDATE bans SET unbanned = 1,unban_reason = 'Ban duration ended.' WHERE ban_id = ?",(ban_id,))
-                    await self.bot.db.commit()
-
-    @tasks.loop(minutes=1)
+                await self.unban_task(row)
+                
+    async def unmute_task(self,unmuting):
+        print(unmuting)
+        mute_id,member_id,guild_id,unmute_time = unmuting
+        t = datetime.datetime.strptime(unmute_time,"%Y-%m-%d %H:%M:%S")
+        await discord.utils.sleep_until(t)
+        guild = self.bot.get_guild(guild_id)
+        if guild is None or guild.unavailable:
+            return
+        muted_role = discord.utils.get(guild.roles,name="Muted") or discord.utils.get(guild.roles,name="muted")
+        if not muted_role:
+            return await self.bot.db.execute("UPDATE mutes SET unmuted = 1,unmute_reason = 'Role Muted doesn't exist.' WHERE mute_id = ?",(mute_id,))
+        member = guild.get_member(member_id)
+        if not member:
+            await self.bot.db.execute("UPDATE mutes SET unmuted = 1,unmute_reason = 'Couldn't find the member' WHERE mute_id = ?",(mute_id,))
+            return await self.bot.db.commit()
+        try:
+            await member.remove_roles(muted_role)
+        except discord.Forbidden:
+            await guild.owner.send(f"Couldn't unmute {member}. My role is below them.")
+        else:
+            await self.bot.db.execute("UPDATE mutes SET unmuted = 1,unmute_reason = 'Mute duration is up.' WHERE mute_id = ?",(mute_id,))
+            return await self.bot.db.commit()
+            
+    @tasks.loop(seconds=30)
     async def unmute_loop(self):
         await self.bot.wait_until_ready()
-        sql = "SELECT member_id,guild_id,mute_id FROM mutes WHERE unmute_time IS NOT NULL AND unmute_time <= ? AND unmuted = 0;"
-        async with self.bot.db.execute(sql,(datetime.datetime.utcnow().replace(microsecond=0),)) as cursor:
+        sql = "SELECT mute_id,member_id,guild_id,unmute_time FROM mutes WHERE unmute_time IS NOT NULL AND CAST((julianday(unmute_time) - julianday('now'))*86400 AS INTEGER) <= 30 AND unmuted = 0;"
+        async with self.bot.db.execute(sql) as cursor:
             async for row in cursor:
-                member_id,guild_id,mute_id = row
-                guild = self.bot.get_guild(guild_id)
-                muted_role = discord.utils.get(guild.roles,name="Muted") or discord.utils.get(guild.roles,name="muted")
-                member = guild.get_member(member_id)
-                try:
-                    await member.remove_roles(muted_role,reason="Mute duration ended.")
-                except HTTPException:
-                    pass
-                else:
-                    await self.bot.db.execute("UPDATE mutes SET unmuted = 1,unmute_reason = 'Mute time duration ended.' WHERE mute_id = ?",(mute_id,))
-                    await self.bot.db.commit()
+                await self.unmute_task(row)
 
     def bot_has_higher_role(self,member):
         if member.top_role.position < member.guild.me.top_role.position:

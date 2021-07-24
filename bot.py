@@ -1,10 +1,11 @@
+import io
 import aiohttp
 from dotenv import load_dotenv
 import discord
 import os
 from discord.ext import commands
 import aiosqlite
-from datetime import date, datetime
+from datetime import datetime
 import re
 
 time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])") #Detects patterns like "12d","10m"
@@ -104,6 +105,12 @@ async def connect_db():
     bot.cs = aiohttp.ClientSession()
     bot.db = await aiosqlite.connect("databases/main.db")
     bot.no_mentions = discord.AllowedMentions.none()
+
+@bot.command()
+async def test(ctx):
+    with open("chuck-norris-profile-pic.jpg","rb") as f:
+        file = io.BytesIO(f.read())
+    await ctx.send(file=discord.File(fp=file,filename="test.png"))
 
 bot.loop.run_until_complete(connect_db())
 bot.run(TOKEN)
