@@ -1,7 +1,7 @@
-from cogs.music import InvalidVoiceChannel
+from discord.errors import Forbidden
 from discord.ext import commands
 from difflib import get_close_matches
-
+from cogs.music import NotSameVoiceChannel,NoVoiceClient,AuthorIsNotInVoiceChannel
 class ErrorHandler(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
@@ -43,7 +43,11 @@ class ErrorHandler(commands.Cog):
             await ctx.send(error)
         elif isinstance(error,commands.CheckFailure):
             await ctx.send(error,allowed_mentions=self.bot.allowed_mentions)
-        elif isinstance(error,InvalidVoiceChannel):
+        elif isinstance(error,NoVoiceClient):
+            await ctx.send(error)
+        elif isinstance(error,NotSameVoiceChannel):
+            await ctx.send(error)
+        elif isinstance(error,AuthorIsNotInVoiceChannel):
             await ctx.send(error)
         else:
             raise error

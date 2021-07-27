@@ -17,32 +17,45 @@ class Reminder(commands.Cog):
         return result
     
     async def _todo_exists(self,list_id,to_do):
+        """If the to-do exists in the list registered under list_id, then it returns the ID of the to-do."""
         async with self.bot.db.execute("SELECT to_do_id FROM todos WHERE list_id = ? AND to_do = ?",(list_id,to_do)) as cursor:
             result = await cursor.fetchone()
         return result
 
+    async def reminder_task(self,r):
+        member_id,guild_id,reminder,channel_id,reminder_id,remind_time = r
+        t = datetime.datetime.strptime(remind_time,"%Y-%m-%d %H:%M:%S")
+        await discord.utils.sleep_until(t)
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            await self.bot.db.execute("DELETE FROM reminders WHERE guild_id = ?",(guild_id,))
+            await self.bot.db.commit()
+            return
+        if guild.unavailable:
+            return
+        member : discord.Member = guild.get_member(member_id)
+        if member is None:
+            await self.bot.db.execute("DELETE FROM reminders WHERE member_id = ?",(member_id,))
+            await self.bot.db.commit()
+            return
+        try:
+            channel = guild.get_channel(channel_id)
+            await channel.send(f"Alright {member.mention}, you asked me to remind you this : {reminder} ! ")
+        except AttributeError:
+            await member.send(f"Alright {member.mention}, you asked me to remind you this : {reminder} ! ")
+        except:
+            return
+        await self.bot.db.execute("UPDATE reminders SET reminded = 1 WHERE reminder_id = ?",(reminder_id,))
+        await self.bot.db.commit()
+        
     @tasks.loop(seconds=30)
     async def reminders_loop(self):
         await self.bot.wait_until_ready()
-        sql = "SELECT member_id,guild_id,reminder,channel_id,reminder_id FROM reminders WHERE remind_time <= ? AND reminded = 0;"
-        async with self.bot.db.execute(sql,(datetime.datetime.utcnow().replace(microsecond=0),)) as cursor:
+        sql = "SELECT member_id,guild_id,reminder,channel_id,reminder_id,remind_time FROM reminders WHERE CAST((julianday(remind_time) - julianday('now'))*86400 AS INTEGER) <= 30 AND reminded = 0;"
+        async with self.bot.db.execute(sql) as cursor:
             async for row in cursor:
-                try:
-                    guild = self.bot.get_guild(row[1])
-                
-                    if not guild:
-                        continue
-                    member = guild.get_member(row[0])
-                    if not member:
-                        continue
-                    channel = self.bot.get_channel(row[3]) or member
-                    await channel.send(f"Alright {member.mention}, you asked me to remind this : {row[2]}")
-                except AttributeError:
-                    await self.bot.db.execute("DELETE FROM reminders WHERE guild_id = ?",(row[1],))
-                    await self.bot.db.commit()
-                else:
-                    await self.bot.db.execute("UPDATE reminders SET reminded = 1 WHERE reminder_id = ?",(row[4],))
-                    await self.bot.db.commit()
+                await self.reminder_task(row)
+
     
     @commands.command()
     async def remind(self,ctx,time:TimeConverter,*,reminder):

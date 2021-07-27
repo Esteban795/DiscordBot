@@ -7,14 +7,15 @@ import datetime
 
 class Moderation(commands.Cog):
     def __init__(self,bot):
+        super().__init__()
         self.bot = bot
         self.unban_loop.start()
         self.unmute_loop.start()
 
     async def unban_task(self,unbanning):
         ban_id,member_id,guild_id,unban_time = unbanning
-        t = datetime.datetime.strptime(unban_time)
-        await discord.utils.sleep_until(unban_time,"%Y-%m-%d %H:%M:%S")
+        t = datetime.datetime.strptime(unban_time,"%Y-%m-%d %H:%M:%S")
+        await discord.utils.sleep_until(unban_time)
         guild = self.bot.get_guild(guild_id)
         if guild is None or guild.unavailable:
             return
@@ -360,9 +361,9 @@ class Moderation(commands.Cog):
             else:
                 await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
 
-    @commands.command(aliases=["p","perrms"])
+    @commands.command(aliases=["p","perms"])
     @commands.has_permissions(administrator = True)
-    async def perms(self,ctx,member:discord.Member):
+    async def permissions(self,ctx,member:discord.Member):
         """Sends you in DM the permissions the member has on the server."""
         embedVar = discord.Embed(title=f"You asked for {member.mention}'s permissions on {ctx.guild}.",color=0xaaaaff)
         embedVar.add_field(name="Here they are : ",value="\n".join(["• {}".format(i[0]) for i in member.guild_permissions if i[1] is True])) #Iterate through the discord.Member permissions on the guild. If they have the permission, this is added to the list.

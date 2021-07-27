@@ -1,4 +1,4 @@
-import io
+import asyncio
 import aiohttp
 from dotenv import load_dotenv
 import discord
@@ -92,25 +92,21 @@ async def on_ready():
 async def echo(ctx,*,args):
     await ctx.send(args)
 
-   
+
 initial_extensions = ["cogs.remind","cogs.xp","cogs.music","cogs.tags","cogs.eh","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.mod","cogs.chucknorris","cogs.reddit","cogs.python","cogs.image","cogs.gh"]
 
 for i in initial_extensions:
     try:
         bot.load_extension(i)
-    except:
+    except Exception as e:
         print(f"Couldn't load {i}.")
+        print(e)
 
 async def connect_db():
     bot.cs = aiohttp.ClientSession()
     bot.db = await aiosqlite.connect("databases/main.db")
     bot.no_mentions = discord.AllowedMentions.none()
 
-@bot.command()
-async def test(ctx):
-    with open("chuck-norris-profile-pic.jpg","rb") as f:
-        file = io.BytesIO(f.read())
-    await ctx.send(file=discord.File(fp=file,filename="test.png"))
 
 bot.loop.run_until_complete(connect_db())
 bot.run(TOKEN)

@@ -2,7 +2,6 @@ from discord.ext import commands
 import discord
 from PIL import Image,ImageDraw,ImageOps
 import re
-import aiohttp
 import io
 import functools
 import cv2
@@ -96,13 +95,11 @@ class ImageProcessing(commands.Cog):
     def _invert(self,args):
         img = Image.open(args[0]).convert("RGB")
         inverted_img = ImageOps.invert(img)
-        byte_io = io.BytesIO()
         return inverted_img
 
     def _grayscale(self,args):
         img = Image.open(args[0])
         gray_img = ImageOps.grayscale(img)
-        byte_io = io.BytesIO()
         return gray_img
 
     def _topng(self,args):
