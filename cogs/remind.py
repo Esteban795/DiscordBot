@@ -55,8 +55,6 @@ class Reminder(commands.Cog):
         async with self.bot.db.execute(sql) as cursor:
             async for row in cursor:
                 await self.reminder_task(row)
-
-    
     @commands.command()
     async def remind(self,ctx,time:TimeConverter,*,reminder):
         remind_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=time)

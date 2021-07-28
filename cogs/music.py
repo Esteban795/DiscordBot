@@ -121,10 +121,16 @@ class Music(commands.Cog):
     async def _playlist_exists(self,guild_id,playlist_name):
         async with self.bot.db.execute("SELECT playlist_id FROM playlists WHERE guild_id = ? AND playlist_name = ?",(guild_id,playlist_name)) as cursor:
             result = await cursor.fetchone()
-        return result[0]
+        return result
     
     def register_songs(self,songs):
-        pass
+        songs_list = []
+        for song in songs:
+            data = ytdl.extract_info(url=song,download=False)
+            if 'entries' in data:
+                data = data["entries"][0]
+            songs_list.append({'webpage_url': data['webpage_url'],'title': data['title']})
+        return songs_list
 
     async def cleanup(self,guild):
         try:
@@ -269,20 +275,31 @@ class Music(commands.Cog):
         player.volume = vol/100
         return await ctx.send(f"Volume set to {vol}.")
 
-    @commands.group(aliases=["playlists"])
-    async def playlist(self,ctx,*,playlist_name):
+    @commands.group(aliases=["playlists"],invoke_without_command=True)
+    async def playlist(self,ctx,*,playlist_name=None):
         if ctx.invoked_subcommand is None:
-            playlists_list = []
-            em = discord.Embed(title=f"{ctx.guild}'s playlists !",color=discord.Colour.blurple())
-            async with self.bot.db.execute("SELECT playlist_id,playlist_name FROM playlists WHERE guild_id = ?",(ctx.guild.id,)) as cursor:
-                async for row in cursor:
-                    playlist_id,playlist_name = row
-                    async with self.bot.db.execute("SELECT COUNT(*) FROM songs WHERE playlist_id = ?",(playlist_id,)) as songs:
-                        number_of_songs = await songs.fetchone()
-                    playlists_list.append(f"`- {playlist_name} ({number_of_songs[0]} songs).")
-            em.description = "\n".join(playlists_list)
-            return await ctx.send(embed=em)
-    
+            if playlist_name is None:
+                playlists_list = []
+                em = discord.Embed(title=f"{ctx.guild}'s playlists !",color=discord.Colour.blurple())
+                async with self.bot.db.execute("SELECT playlist_id,playlist_name FROM playlists WHERE guild_id = ?",(ctx.guild.id,)) as cursor:
+                    async for row in cursor:
+                        playlist_id,playlist_name = row
+                        async with self.bot.db.execute("SELECT COUNT(*) FROM songs WHERE playlist_id = ?",(playlist_id,)) as songs:
+                            number_of_songs = await songs.fetchone()
+                        playlists_list.append(f"`- {playlist_name} ({number_of_songs[0]} songs).`")
+                em.description = "\n".join(playlists_list)
+                return await ctx.send(embed=em)
+            else:
+                playlist_exists = await self._playlist_exists(ctx.guild.id,playlist_name)
+                if playlist_exists is None:
+                    return await ctx.send(f"No playlist named '{playlist_name}' was found.")
+                playlist_id = playlist_exists[0]
+                sql = "SELECT song_url,song_name FROM songs WHERE playlist_id = ? ORDER BY song_position ASC;"
+                async with self.bot.db.execute(sql,(playlist_id,)) as cursor:
+                    playlist_songs = [f"- [`{song[1]}`]({song[0]})" for song in await cursor.fetchall()]
+                em = discord.Embed(title=f"{playlist_name} playlist - {len(playlist_songs)} songs.",description="\n".join(playlist_songs))
+                return await ctx.send(embed=em)
+
     @playlist.command(aliases=['new'])
     async def create(self,ctx,*args):
         if len(args) == 0:
@@ -290,26 +307,51 @@ class Music(commands.Cog):
         playlist_exists = await self._playlist_exists(ctx.guild.id,args[0])
         if playlist_exists:
             return await ctx.send(f"A playlist named `{args[0]}` already exists.")
-        await self.bot.db.execute("INSERT INTO playlists(playlist_name,creator_id,guild_id) VALUES(?,?,?)",(args[0],ctx.author.id,ctx.guild.id))
+        playlist_created = await self.bot.db.execute_insert("INSERT INTO playlists(playlist_name,creator_id,guild_id) VALUES(?,?,?)",(args[0],ctx.author.id,ctx.guild.id))
         await self.bot.db.commit()
         if len(args) > 1:
+            nb_songs = len(args) - 1
+            await ctx.send(f"Pshhh. Be patient, I need to register {nb_songs} songs.",delete_after=5)
             f = partial(self.register_songs,args[1:])
             songs_list = await self.bot.loop.run_in_executor(None,f)
+            sql = "INSERT INTO songs(playlist_id,song_url,song_name,song_position) VALUES(?,?,?,?)"
+            counter = 0
+            for song in songs_list:
+                await self.bot.db.execute(sql,(playlist_created[0],song["webpage_url"],song["title"],counter))
+
+                counter += 1
+            await self.bot.db.commit()
+            return await ctx.send(f"Successfully created playlist `{args[0]}` ({nb_songs} songs).")
         return await ctx.send(f"Successfully created playlist `{args[0]}`.")
 
+    @playlist.command(aliases=["remove"])
+    async def delete(self,ctx,*,playlist_name):
+        playlist_exists = await self._playlist_exists(ctx.guild.id,playlist_name)
+        if playlist_exists is None:
+            return await ctx.send(f"A playlist named `{playlist_name}` doesn't exist.")
+        try:
+            await ctx.send(f"Are you sure you want to delete the `{playlist_name}` playlist ?")
+            confirm = await self.bot.wait_for("message",check=lambda m:m.author == ctx.author and m.channel == ctx.channel,timeout=15)
+        except asyncio.TimeoutError:
+            return await ctx.send("Aborting process.")
+        else:
+            if confirm.content.lower() == "yes":
+                playlist_id = playlist_exists[0]
+                await self.bot.db.execute("DELETE FROM songs WHERE playlist_id = ?",(playlist_id,))
+                await self.bot.db.execute("DELETE FROM playlists WHERE playlist_id = ?",(playlist_id,))
+                await self.bot.db.commit()
+                return await ctx.send(f"Done ! Playlist `{playlist_name}` was deleted.")
 
-    @commands.command()
-    async def test(self,ctx,*args):
-        l = []
-        for i in args:
-            x = ytdl.extract_info(url=i,download=False)
-            if 'entries' in x:
-                l.append(x["entries"][0]["webpage_url"])
-            else:
-                l.append(x["webpage_url"])
-        print(l)
+    @playlist.command()
+    async def edit(self,ctx,playlist_name,*,new_playlist_name):
+        playlist_exists = await self._playlist_exists(ctx.guild.id,playlist_name)
+        if playlist_exists is None:
+            return await ctx.send(f"A playlist named `{playlist_name}` doesn't exist.")
+        await self.bot.db.execute("UPDATE playlists SET playlist_name = ? WHERE playlist_id = ?",(new_playlist_name,playlist_exists[0]))
+        await self.bot.db.commit()
+        return await ctx.send(f"Playlist name changed : `{playlist_name}` -> `{new_playlist_name}`.")
 
-
+        
     @pause.before_invoke
     @stop.before_invoke
     @resume.before_invoke
