@@ -1,7 +1,7 @@
 from discord.errors import Forbidden
 from discord.ext import commands
 from difflib import get_close_matches
-from cogs.music import NotSameVoiceChannel,NoVoiceClient,AuthorIsNotInVoiceChannel
+from cogs.music import *
 class ErrorHandler(commands.Cog):
     def __init__(self,bot):
         self.bot = bot

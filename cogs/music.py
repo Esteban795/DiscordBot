@@ -5,6 +5,7 @@ from async_timeout import timeout
 from functools import partial
 from youtube_dl import YoutubeDL
 
+__all__ = ('NoVoiceClient',"NotSameVoiceChannel","AuthorIsNotInVoiceChannel")
 
 ytdlopts = {
     'format': 'bestaudio/best',
@@ -117,6 +118,14 @@ class Music(commands.Cog):
         self.white_check = "\U00002705"
         self.red_cross = "\U0000274c"
     
+    async def _playlist_exists(self,guild_id,playlist_name):
+        async with self.bot.db.execute("SELECT playlist_id FROM playlists WHERE guild_id = ? AND playlist_name = ?",(guild_id,playlist_name)) as cursor:
+            result = await cursor.fetchone()
+        return result[0]
+    
+    def register_songs(self,songs):
+        pass
+
     async def cleanup(self,guild):
         try:
             await guild.voice_client.disconnect()
@@ -160,7 +169,7 @@ class Music(commands.Cog):
             else:
                 return await ctx.send(f"Now connected to {channel.mention}.",delete_after=15)
 
-    @commands.command(aliases=["sing"])
+    @commands.group(aliases=["sing"])
     async def play(self,ctx,*,song):
         await ctx.message.edit(suppress=True)
         await ctx.trigger_typing()
@@ -263,8 +272,44 @@ class Music(commands.Cog):
     @commands.group(aliases=["playlists"])
     async def playlist(self,ctx,*,playlist_name):
         if ctx.invoked_subcommand is None:
-            pass
-        
+            playlists_list = []
+            em = discord.Embed(title=f"{ctx.guild}'s playlists !",color=discord.Colour.blurple())
+            async with self.bot.db.execute("SELECT playlist_id,playlist_name FROM playlists WHERE guild_id = ?",(ctx.guild.id,)) as cursor:
+                async for row in cursor:
+                    playlist_id,playlist_name = row
+                    async with self.bot.db.execute("SELECT COUNT(*) FROM songs WHERE playlist_id = ?",(playlist_id,)) as songs:
+                        number_of_songs = await songs.fetchone()
+                    playlists_list.append(f"`- {playlist_name} ({number_of_songs[0]} songs).")
+            em.description = "\n".join(playlists_list)
+            return await ctx.send(embed=em)
+    
+    @playlist.command(aliases=['new'])
+    async def create(self,ctx,*args):
+        if len(args) == 0:
+            return await ctx.send("You didn't give me a playlist name.")
+        playlist_exists = await self._playlist_exists(ctx.guild.id,args[0])
+        if playlist_exists:
+            return await ctx.send(f"A playlist named `{args[0]}` already exists.")
+        await self.bot.db.execute("INSERT INTO playlists(playlist_name,creator_id,guild_id) VALUES(?,?,?)",(args[0],ctx.author.id,ctx.guild.id))
+        await self.bot.db.commit()
+        if len(args) > 1:
+            f = partial(self.register_songs,args[1:])
+            songs_list = await self.bot.loop.run_in_executor(None,f)
+        return await ctx.send(f"Successfully created playlist `{args[0]}`.")
+
+
+    @commands.command()
+    async def test(self,ctx,*args):
+        l = []
+        for i in args:
+            x = ytdl.extract_info(url=i,download=False)
+            if 'entries' in x:
+                l.append(x["entries"][0]["webpage_url"])
+            else:
+                l.append(x["webpage_url"])
+        print(l)
+
+
     @pause.before_invoke
     @stop.before_invoke
     @resume.before_invoke
