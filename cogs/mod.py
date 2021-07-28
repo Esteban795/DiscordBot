@@ -6,7 +6,7 @@ from bot import TimeConverter,get_prefix
 import datetime
 
 class Moderation(commands.Cog):
-    def __init__(self,bot):
+    def __init__(self,bot:commands.Bot):
         super().__init__()
         self.bot = bot
         self.unban_loop.start()
@@ -302,64 +302,15 @@ class Moderation(commands.Cog):
         else:
             await ctx.send("No one said those awful words.")
 
-    @commands.command(aliases=["u","unbna"])
-    @commands.has_permissions(ban_members = True)
-    async def unban(self,ctx,person,*,reason="Not specified."):
-        """Unbans the member from the guild"""
-        bans = await ctx.guild.bans()
-        if len(bans) == 0: #Checks if the banlist is empty.
-            embedVar = discord.Embed(title="Uh oh. Looks like no one is banned on this server. Those are good news !",color=0xaaffaa)
-            return await ctx.send(embed=embedVar)
-        elif person == "all":
-            for entry in bans:
-                user = await  self.bot.fetch_user(entry.user.id)
-                await ctx.guild.unban(user)
-                embedVar = discord.Embed(title="All members have been successfully unbanned !",color=0xaaffaa)
-                return await ctx.send(embed=embedVar)
-        count = 0
-        dictionary = dict()
-        string = ""
-        continuer = True
-        for entry in bans:
-            if "{0.name}#{0.discriminator}".format(entry.user) == person:
-                user = await self.bot.fetch_user(entry.user.id)
-                embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(entry.user),color=0xaaffaa)
-                embedVar.set_footer(text=f"Requested by {ctx.author}.")
-                await ctx.send(embed=embedVar)
-                return await ctx.guild.unban(user,reason=reason)
-            elif entry.user.name == person:
-                    count += 1
-                    key = f"{count}- {entry.user.name}#{entry.user.discriminator}"
-                    dictionary[key] = entry.user.id
-                    string += f"{key}\n"
-        if continuer:
-            if count >= 1:
-                embedVar = discord.Embed(title=f"Uh oh. According to what you gave me, '{person}', I found {count} {'person' if count == 1 else 'people'} named like this.",color=0xaaaaff)
-                embedVar.add_field(name="Here is the list of them : ",value=string)
-                embedVar.add_field(name="How to pick the person you want to unban ?",value="Just give me the number before their name !")
-                embedVar.set_footer(text=f"Requested by {ctx.author}.")
-                await ctx.send(embed=embedVar)   
-                def check(m):
-                    return m.author == ctx.author 
-                ans = await self.bot.wait_for('message',check=check, timeout=10)
-                try:
-                    emoji = '\u2705'
-                    lines = string.split("\n")
-                    identifier = int(dictionary[lines[int("{0.content}".format(ans)) - 1]])
-                    user = await self.bot.fetch_user(identifier)
-                    await ctx.guild.unban(user)
-                    await ans.add_reaction(emoji)
-                    embedVar = discord.Embed(title="{0.name}#{0.discriminator} is now free to join us again !".format(user),color=0xaaffaa)
-                    embedVar.set_footer(text=f"Requested by {ctx.author}.")
-                    await ctx.send(embed=embedVar)
-                except:
-                    emoji = '\u2705'
-                    embedVar = discord.Embed(title="Uh oh. Something went wrong.",color=0xffaaaa)
-                    embedVar.add_field(name="For some reasons, I couldn't unban the user you selected.",value="Please try again !")
-                    embedVar.set_footer(text=f"Requested by {ctx.author}.")
-                    await ctx.send(embed=embedVar)
-            else:
-                await ctx.send("I can't find anyone with username '{}'. Try something else !".format(person))
+    @commands.command(aliases=["u","uban"])
+    async def unban(self,ctx,user:discord.User):
+        try:
+            await ctx.guild.unban(user)
+        except discord.NotFound:
+            raise
+        else:
+            return await ctx.send(f"Unbanned {user}")
+
 
     @commands.command(aliases=["p","perms"])
     @commands.has_permissions(administrator = True)
@@ -381,18 +332,34 @@ class Moderation(commands.Cog):
             - the number of warnings stay under the limit allowed : we just increment the amount of warnings they have.
         3) If the member has no warnings, we create a new row and add it to the database.
         """
+        true_reason = reason + "(Too many warns)"
         if ctx.invoked_subcommand is None:
             cursor =  await self.bot.db.execute(f"SELECT nb_warnings FROM warns  WHERE member_id = ? AND guild_id = ?",(member.id,ctx.guild.id))
             result = await cursor.fetchone()
+            n_member_warnings = result[0]
             number_of_warns_allowed = await self.bot.db.execute(f"SELECT n,punishment FROM warns_allowed WHERE guild_id = ?",(ctx.guild.id,)) #Number of warns allowed for everyone on the server. You can update it whenever you want.
             res = await number_of_warns_allowed.fetchone()
+            number_of_warns_allowed = res[0]
+            punishment = res[1]
             if result:   #The member already has warnings
-                new_warns_number = result[0] + 1
-                if new_warns_number > res[0]: #The member reached the maximum number of warnings allowed without being kicked.
+                new_warns_number = n_member_warnings + 1
+                if new_warns_number > number_of_warns_allowed: #The member reached the maximum number of warnings allowed without being kicked.
                     await self.bot.db.execute(f"DELETE FROM warns WHERE member_id = ? AND guild_id = ?;",(member.id,ctx.guild.id))
                     await self.bot.db.commit()
-                    await member.kick(reason=reason)
-                    await ctx.send(f"{member} was kicked due to too many warns !")
+                    if punishment == "kick":
+                        try:
+                            await member.kick(reason=true_reason)
+                        except discord.Forbidden:
+                            return await ctx.send(f"Can't kick {member.mention} (most likely due to their top role being higher than mine).")
+                        else:
+                            return await ctx.send(f"Successfully kicked {member.mention} (due to too many warns).")
+                    else:
+                        try:
+                            await member.ban(reason=true_reason)
+                        except discord.Forbidden:
+                            return await ctx.send(f"Can't ban {member.mention} (most likely due to their top role being higher than mine).")
+                        else:
+                            return await ctx.send(f"Successfully banned {member.mention} (due to too many warns).")
                 else: #Just increment the amount of warnings the member has
                     await self.bot.db.execute(f"UPDATE warns SET nb_warnings = ? WHERE member_id = ? AND guild_id = ?",(new_warns_number,member.id,ctx.guild.id))
                     await self.bot.db.commit()
@@ -411,10 +378,10 @@ class Moderation(commands.Cog):
 
         3) If you confirm, it changes it. If you take too much time to answer, it cancels the process.
         """
-        cursor = await self.bot.db.execute(f"SELECT nb_warnings FROM warns WHERE member_id = 0;")
+        cursor = await self.bot.db.execute(f"SELECT n,punishment FROM warns_allowed WHERE guild_id = ?",(ctx.guild.id,))
         res = await cursor.fetchone()
         try:
-            await ctx.send(f"Currently, {res[0]} warning(s) gets you auto-kicked. Are you sure you want to change that to {amount} ?")
+            await ctx.send(f"Currently, {res[0]} warning(s) gets you auto-{res[1]}ed. Are you sure you want to change that to {amount} ?")
             confirm = await self.bot.wait_for("message",check=lambda m:m.author == ctx.author and m.channel == ctx.channel,timeout=15)
         except asyncio.TimeoutError:
             await ctx.send("You didn't answer fast enough. Aborting mission !")
@@ -423,7 +390,20 @@ class Moderation(commands.Cog):
                 await self.bot.db.execute(f"UPDATE warns SET nb_warnings = ? WHERE member_id = 0;",(amount,))
                 await self.bot.db.commit()
 
-    @commands.command(aliases=["sb"])
+    @warn.command()
+    async def changepunishment(self,ctx,new_punishment:str):
+        if new_punishment not in ("kick","ban"):
+            return await ctx.send("The punishment must be 'kick' or 'ban'.")
+        try:
+            await ctx.send("Are you sure you want to change the punishment ?")
+            confirm = await self.bot.wait_for("message",check=lambda m:m.author == ctx.author and m.channel == ctx.channel,timeout=15)
+        except asyncio.TimeoutError:
+            return await ctx.send("Aborting process.")
+        else:
+            await self.bot.db.execute("UPDATE warns_allowed SET punishment = ? WHERE guild_id = ?",(new_punishment,ctx.guild.id))
+            await self.bot.db.commit()
+            return await ctx.send(f"New punishment for exceeding number of warns allowed : {new_punishment}.")
+
     async def softban(self,ctx,member:discord.Member,*,reason):
         """A softban is a kick that allows you to delete every message the member has sent on your server.
         
@@ -504,8 +484,8 @@ class Moderation(commands.Cog):
         """
         await ctx.message.delete()
         if ctx.invoked_subcommand is None:
-            await ctx.channel.purge(limit=int(Amount))
-    
+            purged_messages = await ctx.channel.purge(limit=int(Amount))
+            return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
     @purge.command()
     async def commands(self,ctx,amount:int=2):
         """

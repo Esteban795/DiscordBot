@@ -162,6 +162,7 @@ class Music(commands.Cog):
 
     @commands.command(aliases=["sing"])
     async def play(self,ctx,*,song):
+        await ctx.message.edit(suppress=True)
         await ctx.trigger_typing()
         if not ctx.voice_client:
             await ctx.invoke(self.join)
@@ -190,6 +191,9 @@ class Music(commands.Cog):
     async def skip(self,ctx):
         if not ctx.voice_client.is_playing(): #Self explanatory
             return await ctx.send("I'm not playing anything.")
+        player = self.get_music_player(ctx)
+        if player.queue.empty():
+            return await ctx.send("Current queue is empty.")
         voice_client_channel = ctx.voice_client.channel
         voice_channel_members = [member for member in voice_client_channel.members if not member.bot] #Gets every member in the bot's voice channel
         if len(voice_channel_members) == 1 and voice_channel_members[0] == ctx.author: #Command's author is alone in the voice chat, no need to do a vote
@@ -256,6 +260,11 @@ class Music(commands.Cog):
         player.volume = vol/100
         return await ctx.send(f"Volume set to {vol}.")
 
+    @commands.group(aliases=["playlists"])
+    async def playlist(self,ctx,*,playlist_name):
+        if ctx.invoked_subcommand is None:
+            pass
+        
     @pause.before_invoke
     @stop.before_invoke
     @resume.before_invoke
