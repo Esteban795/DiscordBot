@@ -58,6 +58,7 @@ class MyHelp(commands.HelpCommand):
         channel = self.get_destination()
         emby = discord.Embed(title="The cavalry is here ! 🎺",color=0x03fcc6,timestamp=datetime.utcnow(),description="You asked for help, here I am.")
         emby.add_field(name="How to use this command : ",value=self.get_command_signature(command))
+        emby.add_field(name="What does that command do : ",value=command.help)
         if len(command.aliases) > 0:
             emby.add_field(name="Aliases you can use :",value=", ".join(command.aliases),inline=False)
         emby.add_field(name="Cooldown : ",value=command.cooldown_after_parsing,inline=False)

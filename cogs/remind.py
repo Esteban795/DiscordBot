@@ -114,7 +114,7 @@ class Reminder(commands.Cog):
             return await ctx.send("Uhm. This to-do doesn't exist.")
         await self.bot.db.execute("UPDATE todos SET done = 1 WHERE to_do_id = ?",(to_do_exists[0],))
         await self.bot.db.commit()
-        return await ctx.send(f"{to_do} was set to 'Done'.")
+        return await ctx.send(f"`{to_do}` was set to 'Done'.")
 
     @todo.command()
     async def remove(self,ctx,*,to_do):
@@ -126,7 +126,7 @@ class Reminder(commands.Cog):
             return await ctx.send("Uhm. This to-do doesn't exist.")
         await self.bot.db.execute("DELETE FROM todos WHERE to_do_id = ?",(to_do_exists[0],))
         await self.bot.db.commit()
-        return await ctx.send(f"Deleted to-do {to_do}.")
+        return await ctx.send(f"Deleted to-do `{to_do}`.")
     
     @todo.command()
     async def edit(self,ctx,to_do,new_to_do):

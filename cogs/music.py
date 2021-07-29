@@ -1,10 +1,8 @@
-from _typeshed import Self
-from asyncio.base_events import _SendfileFallbackProtocol
 import discord
 from discord.ext import commands
 import asyncio
 from async_timeout import timeout
-from functools import cmp_to_key, partial
+from functools import partial
 from youtube_dl import YoutubeDL
 
 __all__ = ('NoVoiceClient',"NotSameVoiceChannel","AuthorIsNotInVoiceChannel")
@@ -422,11 +420,11 @@ class Music(commands.Cog):
         if ctx.voice_client is None:
             raise NoVoiceClient("I'm currently not connected to a voice channel.")        
         try:
-            authors_vc = ctx.author.voice.channel
+            author_vc = ctx.author.voice.channel
         except AttributeError: #Author isn't in a voice channel
             raise AuthorIsNotInVoiceChannel("You must be connected to a voice channel (actually, my voice channel) to use this command.")
         else:
-            if authors_vc != ctx.voice_client.channel: #Author isn't in the same voice channel as bot
+            if author_vc != ctx.voice_client.channel: #Author isn't in the same voice channel as bot
                 raise NotSameVoiceChannel("You must be connected to my voice channel to use this command.")
 
 
