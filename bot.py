@@ -37,7 +37,7 @@ async def get_prefix(bot,message):
                 return [i[0] for i in result] + ["$"]
 
 load_dotenv()
-bot = commands.Bot(command_prefix=get_prefix,description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all(),activity=discord.Activity(type=discord.ActivityType.watching, name="TelSpin"))
+bot = commands.Bot(command_prefix=get_prefix,description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
 
 class MyHelp(commands.HelpCommand):
     def get_command_signature(self, command):

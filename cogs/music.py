@@ -138,6 +138,11 @@ class Music(commands.Cog):
         async with self.bot.db.execute("SELECT creator_id FROM playlists WHERE playlist_id = ?",(playlist_id,)) as cursor:
             result = await cursor.fetchone()
         return result
+    
+    async def _get_last_song_position(self,playlist_id):
+        async with self.bot.db.execute("SELECT MAX(song_position) FROM songs WHERE playlist_id = ?",(playlist_id,)) as cursor:
+            result = await cursor.fetchone()
+        return result[0] or 0
 
     def register_songs(self,songs):
         songs_list = []
@@ -219,7 +224,6 @@ class Music(commands.Cog):
         for song in songs_list:
             source = await YTDLSource.create_source(ctx,song[0],loop=self.bot.loop,download=False,playlist=True)
             await player.queue.put(source)
-        return True
 
     @commands.command()
     async def stop(self,ctx):
@@ -331,9 +335,8 @@ class Music(commands.Cog):
         sql = "SELECT song_url,song_name FROM songs WHERE playlist_id = ? ORDER BY song_position ASC;"
         async with self.bot.db.execute(sql,(playlist_id,)) as cursor:
             playlist_songs = await cursor.fetchall()
-        songs_queued = await self.play_playlist(ctx,playlist_songs)
-        if songs_queued:
-            return await ctx.send(f"Let's go ! I will play the songs of `{playlist_name}` playlist.")
+        await ctx.send(f"Let's go ! I will play the songs of `{playlist_name}` playlist.")
+        await self.play_playlist(ctx,playlist_songs)
 
     @playlist.command(aliases=['new'])
     async def create(self,ctx,*args):
@@ -409,7 +412,23 @@ class Music(commands.Cog):
         em.add_field(name="Creator :",value=creator.mention)
         em.add_field(name="Uses : ",value=playlist_infos[2])
         return await ctx.send(embed=em)
-        
+    
+    @playlist.command()
+    async def addsong(self,ctx,playlist_name,*,song):
+        playlist_exists = await self._playlist_exists(ctx.guild.id,playlist_name)
+        if playlist_exists is None:
+            return await ctx.send(f"No playlist named '{playlist_name}' was found.")
+        playlist_id = playlist_exists[0]
+        f = partial(self.register_songs,[song])
+        song_to_add = await self.bot.loop.run_in_executor(None,f)
+        song_to_add = song_to_add[0]
+        sql = "INSERT INTO songs(playlist_id,song_url,song_name,song_position) VALUES(?,?,?,?)"
+        last_song_position = await self._get_last_song_position(playlist_id)
+        song_position = last_song_position + 1
+        await self.bot.db.execute(sql,(playlist_id,song_to_add["webpage_url"],song_to_add["title"],song_position))
+        await self.bot.db.commit()
+        return await ctx.send(f"Successfully added `{song_to_add['title']}`. (`{playlist_name}` playlist)")
+
     @pause.before_invoke
     @stop.before_invoke
     @resume.before_invoke
