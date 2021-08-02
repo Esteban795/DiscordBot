@@ -32,7 +32,7 @@ class CustomOnMessage(commands.Cog):
             if result: 
                 await message.channel.send(result[0])
 
-    @commands.group(aliases=["COM","com"])
+    @commands.group(aliases=["com"])
     async def custom_on_message(self,ctx):
         """Nothing special here. You need to use subcommands."""
         if ctx.invoked_subcommand is None:

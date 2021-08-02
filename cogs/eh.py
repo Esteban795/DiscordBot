@@ -49,6 +49,8 @@ class ErrorHandler(commands.Cog):
             await ctx.send(error)
         elif isinstance(error,AuthorIsNotInVoiceChannel):
             await ctx.send(error)
+        elif isinstance(error,PlaylistNotFound):
+            await ctx.send(error)
         else:
             raise error
 

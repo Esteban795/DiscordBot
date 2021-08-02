@@ -1,5 +1,5 @@
-import asyncio
 import aiohttp
+from discord import utils
 from dotenv import load_dotenv
 import discord
 import os
@@ -7,6 +7,7 @@ from discord.ext import commands
 import aiosqlite
 from datetime import datetime
 import re
+import asyncio
 
 time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])") #Detects patterns like "12d","10m"
 time_dict = {"h":3600, "s":1, "m":60, "d":86400}
@@ -37,7 +38,7 @@ async def get_prefix(bot,message):
                 return [i[0] for i in result] + ["$"]
 
 load_dotenv()
-bot = commands.Bot(command_prefix=get_prefix,description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all())
+bot = commands.Bot(command_prefix=get_prefix,description="A Chuck Norris dedicated discord bot !",intents=discord.Intents.all(),case_insensitive=True)
 
 class MyHelp(commands.HelpCommand):
     def get_command_signature(self, command):
@@ -106,7 +107,6 @@ async def connect_db():
     bot.cs = aiohttp.ClientSession()
     bot.db = await aiosqlite.connect("databases/main.db")
     bot.no_mentions = discord.AllowedMentions.none()
-
 
 bot.loop.run_until_complete(connect_db())
 bot.run(TOKEN)
