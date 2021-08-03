@@ -1,13 +1,13 @@
 from logging import setLogRecordFactory
 import discord
-from discord.ext import commands
+from discord.ext import commands,menus
 import asyncio
 from async_timeout import timeout
 from functools import partial
 from youtube_dl import YoutubeDL
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
-
+import re
 
 __all__ = ('NoVoiceClient',"NotSameVoiceChannel","AuthorIsNotInVoiceChannel","PlaylistNotFound","SongNotInPlaylist")
 
@@ -43,9 +43,29 @@ class SongNotFound(commands.CommandError):
 class SongNotInPlaylist(commands.CommandError):
     """A class that represents the fact that a song doesn't exist in the playlist yet."""
 
+class InvalidSlice(commands.CommandError):
+    """A class that represents that the fact that was inputted is wrong (doesn't match \d:\d)"""
+
 class LowerConverter(commands.Converter):
     async def convert(self, ctx, argument):
         return argument.lower()
+
+class SliceConverter(commands.Converter):
+    async def convert(self, ctx, argument):
+        slice_regex = re.compile(r"(\d{1,5}):(\d{1,5})")
+        result = slice_regex.findall(argument)
+        if not result:
+            raise InvalidSlice(f"{argument} is not a valid slice. A slice must be of the form a:b, with a <= b.")
+        start,end = result[0]
+        if end > start:
+            raise InvalidSlice(f"{argument} is not a valid slice. A slice must be of the form a:b, with a <= b.")
+        return (start,end)
+
+class PlaylistsDisplayer(menus.ListPageSource):
+    async def format_page(self, menu, item):
+        embed = discord.Embed(title="Playlists available : ",description="\n".join(item))
+        # you can format the embed however you'd like
+        return embed
 
 
 ytdl = YoutubeDL(ytdlopts)
@@ -57,7 +77,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.requester = requester
 
         self.title = data.get('title')
-        self.web_url = data.get('webpage_url')
+        self.web_url = data.get('web_url')
 
     def __getitem__(self, item: str):
         """Allows us to access attributes similar to a dict.
@@ -78,7 +98,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         if download:
             source = ytdl.prepare_filename(data)
         else:
-            return {'webpage_url': data['webpage_url'], 'requester': ctx.author, 'title': data['title']}
+            return {'web_url': data['webpage_url'], 'requester': ctx.author, 'title': data['title']}
         return cls(discord.FFmpegPCMAudio(source), data=data, requester=ctx.author)
 
     @classmethod
@@ -89,7 +109,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         requester = data['requester']
         to_run = partial(ytdl.extract_info, url=data['webpage_url'], download=False)
         data = await loop.run_in_executor(None, to_run)
-        return cls(discord.FFmpegPCMAudio(data['url']), data=data, requester=requester)
+        return cls(discord.FFmpegPCMAudio(data['web_url']), data=data, requester=requester)
 
 class MusicPlayer:
 
@@ -104,18 +124,22 @@ class MusicPlayer:
         self.volume = .5
         self.current = None
         self._previous = None
+        self.loop = False
         ctx.bot.loop.create_task(self.music_player_loop())
     
     async def music_player_loop(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
             self.run_next.clear()
-            try:
-                async with timeout(600):
-                    source = await self.queue.get()
-            except asyncio.TimeoutError:
-                await self._destroy(self._guild)
+            if not self.loop:
+                try:
+                    async with timeout(600):
+                        source = await self.queue.get()
+                except asyncio.TimeoutError:
+                    await self._destroy(self._guild)
+            print(source)
             source = await YTDLSource.regather_stream(source,loop=self.bot.loop)
+            print(source)
             source.volume = self.volume
             self.current = source
             self._guild.voice_client.play(source,after=lambda _:self.bot.loop.call_soon_threadsafe(self.run_next.set)) #Sets the event when the song is done, means it is now not blocking.
@@ -204,21 +228,16 @@ class Music(commands.Cog):
             return True
     
     def _song_already_stored(self,urls):
-        print(urls)
         all_urls = [(i["url"],) for i in self._songs.values()]
         all_ids = [i["id"] for i in self._songs.values()]
         l = []
-        c = 0
         for song in urls:
             url = song["webpage_url"]
             if url in all_urls:
-                print(f"{song['title']} est déjà dans la liste")
                 index = all_urls.index(url)
-                l.append({"webpage_url":url,"title":song["title"],"id":all_ids[c]})
+                l.append({"webpage_url":url,"title":song["title"],"id":all_ids[index]})
             else:
-                print(f"{song['title']} n'est pas dans la liste")
                 l.append({"webpage_url":url,"title":song["title"]})
-            c += 1
         return l
 
     def _count_songs_from_playlist(self,guild_id,playlist_id):
@@ -236,7 +255,6 @@ class Music(commands.Cog):
         return self._playlists[guild_id][playlist_id]["playlist_name"]
 
     def register_songs(self,songs):
-        print(songs)
         songs_list = []
         for song in songs:
             data = ytdl.extract_info(url=song,download=False)
@@ -318,7 +336,6 @@ class Music(commands.Cog):
     
     async def play_playlist(self,ctx,songs_list):
         await ctx.trigger_typing()
-        print(songs_list)
         if not ctx.voice_client:
             await ctx.invoke(self.join)
         try:
@@ -428,9 +445,13 @@ class Music(commands.Cog):
             playlists_list.append(f"`- {playlist_name} ({number_of_songs} songs).`")
         if len(playlists_list) == 0:
             em.description = "Woah. Emptiness."
-        else:
+            return await ctx.send(embed=em)
+        elif len(playlists_list) < 10:
             em.description = "\n".join(playlists_list)
-        return await ctx.send(embed=em)
+            return await ctx.send(embed=em)
+        else:
+            menu = menus.MenuPages(PlaylistsDisplayer(playlists_list,per_page=10))
+            return await menu.start(ctx)
 
     @commands.group(invoke_without_command=True)
     async def playlist(self,ctx,*,playlist_name):
@@ -526,7 +547,6 @@ class Music(commands.Cog):
     
     @playlist.command()
     async def addsongs(self,ctx,playlist_name,*songs):
-        print(songs)
         await ctx.message.edit(suppress=True)
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         playlist_id = playlist_exists
@@ -569,12 +589,65 @@ class Music(commands.Cog):
             else:
                 return await ctx.send("Well, now I'm not doing it.")
 
+    @playlist.command(aliases=["removefrom"])
+    async def delfrom(self,ctx,playlist_name,n:int):
+        if n < 0:
+            return await ctx.send("... I can't process negative numbers here.")
+        playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
+        number_of_songs = self._count_songs_from_playlist(ctx.guild.id,playlist_exists)
+        if n > number_of_songs:
+            return await ctx.send(f"Wait. You want to delete songs that comes after the first {n} songs, but the playlist only contains {number_of_songs} songs.")
+        await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position > ?",(n,))
+        await self.bot.db.commit()
+        songs = self._playlists[ctx.guild.id][playlist_exists]["songs"].items()
+        for i in range(n-1,len(songs)):
+            song_id = songs[i][0]
+            del self._playlists[ctx.guild.id][playlist_exists]["songs"][song_id]
+        return await ctx.send(f"Successfully removed every last {number_of_songs - n} songs.")
+    
+    @playlist.command(aliases=["removeto"])
+    async def delto(self,ctx,playlist_name,n:int):
+        if n < 0:
+            return await ctx.send("... I can't process negative numbers here.")
+        playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
+        number_of_songs = self._count_songs_from_playlist(ctx.guild.id,playlist_exists)
+        if n > number_of_songs:
+            n = number_of_songs
+        await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position < ?",(n,))
+        await self.bot.db.commit()
+        songs = self._playlists[ctx.guild.id][playlist_exists]["songs"].items()
+        for i in range(n):
+            song_id = songs[i][0]
+            del self._playlists[ctx.guild.id][playlist_exists]["songs"][song_id]
+        return await ctx.send(f"Successfully removed first {number_of_songs - n} songs.")
+    
+    @commands.command(aliases=["removefromto"])
+    async def delfromto(self,ctx,playlist_name,slice:SliceConverter):
+        start,end = slice
+        playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
+        number_of_songs = self._count_songs_from_playlist(ctx.guild.id,playlist_exists)
+        if end > number_of_songs:
+            end = number_of_songs
+        await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position > ? AND position < ?",(start,end))
+        await self.bot.db.commit()
+
+    @commands.command()
+    async def loop(self,ctx):
+        player = self.get_music_player(ctx)
+        if not ctx.voice_client.is_playing():
+            return await ctx.send("I'm currently not playing anything.")
+        player.loop = not player.loop
+        if player.loop:
+            return await ctx.send("Looping the current song.")
+        return await ctx.send("Removing the loop on the current song.")
+        
     @pause.before_invoke
     @stop.before_invoke
     @resume.before_invoke
     @skip.before_invoke
     @queue.before_invoke
     @volume.before_invoke
+    @loop.before_invoke
     async def ensure_same_voice_channel(self,ctx):
         if ctx.voice_client is None:
             raise NoVoiceClient("I'm currently not connected to a voice channel.")        
