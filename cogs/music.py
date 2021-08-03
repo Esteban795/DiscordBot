@@ -1,11 +1,10 @@
-from logging import setLogRecordFactory
+import itertools
 import discord
 from discord.ext import commands,menus
 import asyncio
 from async_timeout import timeout
 from functools import partial
 from youtube_dl import YoutubeDL
-from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 import re
 
@@ -64,9 +63,7 @@ class SliceConverter(commands.Converter):
 class PlaylistsDisplayer(menus.ListPageSource):
     async def format_page(self, menu, item):
         embed = discord.Embed(title="Playlists available : ",description="\n".join(item))
-        # you can format the embed however you'd like
         return embed
-
 
 ytdl = YoutubeDL(ytdlopts)
 
@@ -77,7 +74,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.requester = requester
 
         self.title = data.get('title')
-        self.web_url = data.get('web_url')
+        self.web_url = data.get('webpage_url')
 
     def __getitem__(self, item: str):
         """Allows us to access attributes similar to a dict.
@@ -98,7 +95,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         if download:
             source = ytdl.prepare_filename(data)
         else:
-            return {'web_url': data['webpage_url'], 'requester': ctx.author, 'title': data['title']}
+            return {'webpage_url': data['webpage_url'], 'requester': ctx.author, 'title': data['title']}
         return cls(discord.FFmpegPCMAudio(source), data=data, requester=ctx.author)
 
     @classmethod
@@ -109,8 +106,39 @@ class YTDLSource(discord.PCMVolumeTransformer):
         requester = data['requester']
         to_run = partial(ytdl.extract_info, url=data['webpage_url'], download=False)
         data = await loop.run_in_executor(None, to_run)
-        return cls(discord.FFmpegPCMAudio(data['web_url']), data=data, requester=requester)
+        return cls(discord.FFmpegPCMAudio(data['url']), data=data, requester=requester)
 
+class CustomQueue(asyncio.Queue):
+
+    def __getitem__(self,item):
+        if isinstance(item,slice):
+            return list(itertools.islice(self._queue,item.start,item.stop,item.step))
+        else:
+            return self._queue[item]
+    
+    def __iter__(self):
+        return self._queue.__iter__()
+    
+    def __len__(self):
+        return self.qsize()
+    
+    def clear(self):
+        return self._queue.clear()
+    
+    def remove(self,index:int):
+        del self._queue[index]
+
+    def get_element(self,index:int):
+        return self._queue[index]
+    
+    def insert(self,index:int,source):
+        self._queue.insert(index,source)
+
+    def jump(self,index:int):
+        for i in range(index - 1):
+            self._queue.popleft()
+        
+        
 class MusicPlayer:
 
     def __init__(self,ctx):
@@ -118,13 +146,13 @@ class MusicPlayer:
         self._guild = ctx.guild
         self._channel = ctx.channel
         self._cog = ctx.cog
-        self.queue = asyncio.Queue()
+        self.queue = CustomQueue(0)
         self.run_next = asyncio.Event()
         self.now_playing = None
         self.volume = .5
         self.current = None
-        self._previous = None
-        self.loop = False
+        self.previous = None
+        self.loop = None
         ctx.bot.loop.create_task(self.music_player_loop())
     
     async def music_player_loop(self):
@@ -135,17 +163,18 @@ class MusicPlayer:
                 try:
                     async with timeout(600):
                         source = await self.queue.get()
+                        temp = source.copy()
                 except asyncio.TimeoutError:
                     await self._destroy(self._guild)
-            print(source)
+            else:
+                source = self.previous
             source = await YTDLSource.regather_stream(source,loop=self.bot.loop)
-            print(source)
             source.volume = self.volume
             self.current = source
             self._guild.voice_client.play(source,after=lambda _:self.bot.loop.call_soon_threadsafe(self.run_next.set)) #Sets the event when the song is done, means it is now not blocking.
             self.now_playing = await self._channel.send(f"Now playing : `{source['title']}`.")
             await self.run_next.wait()
-            self._previous = source.web_url
+            self.previous = temp
             try:
                 await self.now_playing.delete()
             except discord.Forbidden:
@@ -254,6 +283,13 @@ class Music(commands.Cog):
     def _get_playlist_name(self,guild_id,playlist_id):
         return self._playlists[guild_id][playlist_id]["playlist_name"]
 
+    async def _update_songs_position(self,guild_id,playlist_id):
+        songs_ids = [id for id in self._playlists[guild_id][playlist_id].keys()]
+        c = 0
+        for id in songs_ids:
+            await self.bot.db.execute("UPDATE songs_in_playlists SET position = ? WHERE playlist_id = ? AND song_id = ?",(c,playlist_id,id))
+        await self.bot.db.commit()
+
     def register_songs(self,songs):
         songs_list = []
         for song in songs:
@@ -334,6 +370,15 @@ class Music(commands.Cog):
         source = await YTDLSource.create_source(ctx,song,loop=self.bot.loop,download=False)
         await player.queue.put(source)
     
+    @commands.command(aliases=["playprev"])
+    async def playprevious(self,ctx):
+        player = self.get_music_player(ctx)
+        if player.previous is None:
+            return await ctx.send("Wait. I didn't play anything before the current song.")
+        player.queue.insert(0,player.previous)
+        title = player.previous["title"]
+        return await ctx.send(f"`{title}` will be played again after the current song.")
+
     async def play_playlist(self,ctx,songs_list):
         await ctx.trigger_typing()
         if not ctx.voice_client:
@@ -405,22 +450,58 @@ class Music(commands.Cog):
         ctx.voice_client.resume()
         return await ctx.send(f"Song resumed. (requested by {ctx.author.mention})",allowed_mentions=self.bot.no_mentions)
 
-    @commands.command()
+    @commands.group(invoke_without_command=True)
     async def queue(self,ctx):
-        try:
-            player = self.players[ctx.guild.id]
-        except KeyError:
-            raise NoVoiceClient("Not connected to a voice channel.")
-        if player.queue.empty():
-            return await ctx.send("Current queue is empty.")
-        queue = player.queue._queue
-        queue_size = player.queue.qsize()
-        max_song = min(10,queue_size)
-        formatted_queue = "\n".join([f"- [`{queue[i]['title']}`]({queue[i]['webpage_url']})  ({queue[i]['requester'].mention})" for i in range(max_song)])
-        em = discord.Embed(title="Upcoming songs - ",color=discord.Colour.blurple(),description=formatted_queue)
-        if queue_size > 10:
-            em.set_footer(text=f"{queue_size - 10} others songs upcoming !")
-        return await ctx.send(embed=em)
+        if ctx.invoked_subcommand is None:
+            try:
+                player = self.players[ctx.guild.id]
+            except KeyError:
+                raise NoVoiceClient("Not connected to a voice channel.")
+            if player.queue.empty():
+                return await ctx.send("Current queue is empty.")
+            queue = player.queue._queue
+            queue_size = player.queue.qsize()
+            max_song = min(10,queue_size)
+            formatted_queue = "\n".join([f"- [`{queue[i]['title']}`]({queue[i]['webpage_url']})  ({queue[i]['requester'].mention})" for i in range(max_song)])
+            em = discord.Embed(title="Upcoming songs - ",color=discord.Colour.blurple(),description=formatted_queue)
+            if queue_size > 10:
+                em.set_footer(text=f"{queue_size - 10} others songs upcoming !")
+            return await ctx.send(embed=em)
+    
+    @queue.command(aliases=["delete"])
+    async def remove(self,ctx,index:int):
+        if index < 1:
+            return await ctx.send("A song index cannot be lower than 1. How could I delete a song that doesn't exist ?")
+        player = self.get_music_player(ctx)
+        if len(player.queue) == 0:
+            return await ctx.send("The queue is empty. You want me to remove the emptiness of it ?")
+        song_removed = player.queue.get_element(index - 1)
+        player.queue.remove(index - 1)
+        return await ctx.send(f"Removed `{song_removed['title']}` from the queue.")
+
+    @queue.command()
+    async def insert(self,ctx,n:int,*,song):
+        await ctx.message.edit(suppress=True)
+        player = self.get_music_player(ctx)
+        if n < 1:
+            n = 0
+        elif n > len(player.queue):
+            n = len(player.queue)
+        source = await YTDLSource.create_source(ctx,search=song,loop=self.bot.loop)
+        player.queue.insert(n - 1,source)
+        return await ctx.send(f"Inserted `{source['title']}` at index {n} of this queue.")
+    
+    @queue.command()
+    async def jump(self,ctx,index:int):
+        player = self.get_music_player(ctx)
+        l = len(player.queue)
+        if index < 1:
+            index = 1
+        elif index > l:
+            index = l
+        player.queue.jump(index)
+        ctx.voice_client.stop()
+        return await ctx.send(f"Jumped to `{player.queue._queue[0]['title']}`")
 
     @commands.command()
     async def volume(self,ctx,vol:int):
@@ -433,6 +514,16 @@ class Music(commands.Cog):
             ctx.voice_client.source.volume = vol/100
         player.volume = vol/100
         return await ctx.send(f"Volume set to {vol}.")
+    
+    @commands.command()
+    async def loop(self,ctx):
+        player = self.get_music_player(ctx)
+        if not ctx.voice_client.is_playing():
+            return await ctx.send("I'm currently not playing anything.")
+        player.loop = not player.loop
+        if player.loop:
+            return await ctx.send("Looping the current song.")
+        return await ctx.send("Removing the loop on the current song.")
 
     @commands.command()
     async def playlists(self,ctx):
@@ -597,12 +688,13 @@ class Music(commands.Cog):
         number_of_songs = self._count_songs_from_playlist(ctx.guild.id,playlist_exists)
         if n > number_of_songs:
             return await ctx.send(f"Wait. You want to delete songs that comes after the first {n} songs, but the playlist only contains {number_of_songs} songs.")
-        await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position > ?",(n,))
+        await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position >= ?",(n,))
         await self.bot.db.commit()
         songs = self._playlists[ctx.guild.id][playlist_exists]["songs"].items()
         for i in range(n-1,len(songs)):
             song_id = songs[i][0]
             del self._playlists[ctx.guild.id][playlist_exists]["songs"][song_id]
+        await self._update_songs_position(ctx.guild.id,playlist_exists)
         return await ctx.send(f"Successfully removed every last {number_of_songs - n} songs.")
     
     @playlist.command(aliases=["removeto"])
@@ -611,43 +703,56 @@ class Music(commands.Cog):
             return await ctx.send("... I can't process negative numbers here.")
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         number_of_songs = self._count_songs_from_playlist(ctx.guild.id,playlist_exists)
+        actual_playlist_name = self._playlists[ctx.guild.id][playlist_exists]["playlist_name"]
         if n > number_of_songs:
             n = number_of_songs
-        await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position < ?",(n,))
-        await self.bot.db.commit()
-        songs = self._playlists[ctx.guild.id][playlist_exists]["songs"].items()
-        for i in range(n):
-            song_id = songs[i][0]
-            del self._playlists[ctx.guild.id][playlist_exists]["songs"][song_id]
-        return await ctx.send(f"Successfully removed first {number_of_songs - n} songs.")
+        try:
+            await ctx.send(f"Are you sure you want to delete {n} songs from the `{actual_playlist_name}` ? No coming back !")
+            m = await self.bot.wait_for("message",check=lambda m:m.author == ctx.author and m.channel == ctx.channel,timeout=10)
+        except asyncio.TimeoutError:
+            return await ctx.send("Aborting process.")
+        else:
+            await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position <= ?",(n,))
+            await self.bot.db.commit()
+            songs = self._playlists[ctx.guild.id][playlist_exists]["songs"].items()
+            for i in range(n):
+                song_id = songs[i][0]
+                del self._playlists[ctx.guild.id][playlist_exists]["songs"][song_id]
+            await self._update_songs_position(ctx.guild.id,playlist_exists)
+            return await ctx.send(f"Successfully removed first {number_of_songs - n} songs.")
     
     @commands.command(aliases=["removefromto"])
     async def delfromto(self,ctx,playlist_name,slice:SliceConverter):
         start,end = slice
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         number_of_songs = self._count_songs_from_playlist(ctx.guild.id,playlist_exists)
+        actual_playlist_name = self._playlists[ctx.guild.id][playlist_exists]["playlist_name"]
         if end > number_of_songs:
             end = number_of_songs
-        await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position > ? AND position < ?",(start,end))
-        await self.bot.db.commit()
+        try:
+            await ctx.send(f"Are you sure you want to delete {end - start} songs from the `{actual_playlist_name}` ? No coming back !")
+            m = await self.bot.wait_for("message",check=lambda m:m.author == ctx.author and m.channel == ctx.channel,timeout=10)
+        except asyncio.TimeoutError:
+            return await ctx.send("Aborting process.")
+        else:
+            await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position >= ? AND position <= ?",(start,end))
+            await self.bot.db.commit()
+            songs = self._playlists[ctx.guild.id][playlist_exists]["songs"].items()
+            for i in range(start,end+1):
+                song_id = songs[i][0]
+                del self._playlists[ctx.guild.id][playlist_exists]["songs"][song_id]
+            await self._update_songs_position(ctx.guild.id,playlist_exists)
+            return await ctx.send(f"Deleted {end - start} (index {start} to {end}).")
 
-    @commands.command()
-    async def loop(self,ctx):
-        player = self.get_music_player(ctx)
-        if not ctx.voice_client.is_playing():
-            return await ctx.send("I'm currently not playing anything.")
-        player.loop = not player.loop
-        if player.loop:
-            return await ctx.send("Looping the current song.")
-        return await ctx.send("Removing the loop on the current song.")
-        
     @pause.before_invoke
     @stop.before_invoke
     @resume.before_invoke
     @skip.before_invoke
-    @queue.before_invoke
     @volume.before_invoke
     @loop.before_invoke
+    @remove.before_invoke
+    @insert.before_invoke
+    @playprevious.before_invoke
     async def ensure_same_voice_channel(self,ctx):
         if ctx.voice_client is None:
             raise NoVoiceClient("I'm currently not connected to a voice channel.")        
