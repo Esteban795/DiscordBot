@@ -1,5 +1,4 @@
 import aiohttp
-from discord import utils
 from dotenv import load_dotenv
 import discord
 import os
@@ -7,7 +6,6 @@ from discord.ext import commands
 import aiosqlite
 from datetime import datetime
 import re
-import asyncio
 
 time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])") #Detects patterns like "12d","10m"
 time_dict = {"h":3600, "s":1, "m":60, "d":86400}

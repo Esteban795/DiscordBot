@@ -7,8 +7,9 @@ from functools import partial
 from youtube_dl import YoutubeDL
 from fuzzywuzzy import process
 import re
+import random
 
-__all__ = ('NoVoiceClient',"NotSameVoiceChannel","AuthorIsNotInVoiceChannel","PlaylistNotFound","SongNotInPlaylist")
+__all__ = ('NoVoiceClient',"NotSameVoiceChannel","AuthorIsNotInVoiceChannel","PlaylistNotFound","SongNotInPlaylist","InvalidSlice")
 
 ytdlopts = {
     'format': 'bestaudio/best',
@@ -54,10 +55,10 @@ class SliceConverter(commands.Converter):
         slice_regex = re.compile(r"(\d{1,5}):(\d{1,5})")
         result = slice_regex.findall(argument)
         if not result:
-            raise InvalidSlice(f"{argument} is not a valid slice. A slice must be of the form a:b, with a <= b.")
-        start,end = result[0]
-        if end > start:
-            raise InvalidSlice(f"{argument} is not a valid slice. A slice must be of the form a:b, with a <= b.")
+            raise InvalidSlice(f"`{argument}`` is not a valid slice. A slice must be of the form a:b, with a <= b. (a and b are numbers)")
+        start,end = [int(i) for i in result[0]]
+        if end < start:
+            raise InvalidSlice(f"`{argument}` is not a valid slice, because the end is lower than the start.")
         return (start,end)
 
 class PlaylistsDisplayer(menus.ListPageSource):
@@ -72,7 +73,6 @@ class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, requester):
         super().__init__(source)
         self.requester = requester
-
         self.title = data.get('title')
         self.web_url = data.get('webpage_url')
 
@@ -137,7 +137,9 @@ class CustomQueue(asyncio.Queue):
     def jump(self,index:int):
         for i in range(index - 1):
             self._queue.popleft()
-        
+
+    def shuffle(self):
+        self._queue = random.sample(self._queue,k=len(self))
         
 class MusicPlayer:
 
@@ -257,9 +259,10 @@ class Music(commands.Cog):
             return True
     
     def _song_already_stored(self,urls):
-        all_urls = [(i["url"],) for i in self._songs.values()]
+        all_urls = [i["url"] for i in self._songs.values()]
         all_ids = [i["id"] for i in self._songs.values()]
         l = []
+        index = 0
         for song in urls:
             url = song["webpage_url"]
             if url in all_urls:
@@ -267,6 +270,7 @@ class Music(commands.Cog):
                 l.append({"webpage_url":url,"title":song["title"],"id":all_ids[index]})
             else:
                 l.append({"webpage_url":url,"title":song["title"]})
+            index += 1
         return l
 
     def _count_songs_from_playlist(self,guild_id,playlist_id):
@@ -503,6 +507,14 @@ class Music(commands.Cog):
         ctx.voice_client.stop()
         return await ctx.send(f"Jumped to `{player.queue._queue[0]['title']}`")
 
+    @queue.command()
+    async def shuffle(self,ctx):
+        player = self.get_music_player(ctx)
+        if len(player.queue) == 0:
+            return await ctx.send("Current queue is empty.")
+        player.queue.shuffle()
+        return await ctx.send("Shuffled the queue !")
+
     @commands.command()
     async def volume(self,ctx,vol:int):
         if not ctx.voice_client.is_playing():
@@ -580,6 +592,7 @@ class Music(commands.Cog):
                     new_song_id = song_inserted[0]
                 await self.bot.db.execute("INSERT INTO songs_in_playlists(playlist_id,song_id,position) VALUES(?,?,?)",(new_playlist_id,new_song_id,counter))
                 self._playlists[ctx.guild.id][new_playlist_id]["songs"][new_song_id] = {"url":song["webpage_url"],"title":song["title"]}
+                self._songs[song["title"]] = {"url":song["webpage_url"],"id":new_song_id}
                 counter += 1
             await self.bot.db.commit()
         return await ctx.send((f"Successfully created playlist `{args[0]}`." if len(args) == 1 else f"Successfully created playlist `{args[0]}`. ({len(songs_list)} songs)"))
@@ -601,10 +614,11 @@ class Music(commands.Cog):
                 await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE playlist_id = ?",(playlist_exists,))
                 await self.bot.db.execute("DELETE FROM playlists WHERE playlist_id = ?",(playlist_exists,))
                 await self.bot.db.commit()
-                del self._playlists[ctx.guild.id][actual_playlist_name]
-                del self._playlists_name[playlist_exists]
-                del self._songs_url[ctx.guild.id][playlist_exists]
+                del self._playlists[ctx.guild.id][playlist_exists]
+                del self._playlists_names[ctx.guild.id][actual_playlist_name]
                 return await ctx.send(f"Done ! Playlist `{actual_playlist_name}` was deleted.")
+            else:
+                return await ctx.send("Aborting process.")
 
     @playlist.command()
     async def edit(self,ctx,playlist_name,*,new_playlist_name):
@@ -631,12 +645,15 @@ class Music(commands.Cog):
         async with self.bot.db.execute(sql,(playlist_id,)) as cursor:
             playlist_songs = [f"- [`{song[1].capitalize()}`]({song[0]})" for song in await cursor.fetchall()]
         creator = ctx.guild.get_member(playlist_infos[0]) or "Creator left the server."
-        em = discord.Embed(title=f"'{actual_playlist_name}' playlist - {len(playlist_songs)} songs.",description="\n".join(playlist_songs))
-        em.add_field(name="Created at :",value=playlist_infos[1])
-        em.add_field(name="Creator :",value=creator.mention)
-        return await ctx.send(embed=em)
+        if len(playlist_songs) < 10:
+            em = discord.Embed(title=f"'{actual_playlist_name}' playlist - {len(playlist_songs)} songs.",description="\n".join(playlist_songs))
+            em.add_field(name="Created at :",value=playlist_infos[1])
+            em.add_field(name="Creator :",value=creator.mention)
+            return await ctx.send(embed=em)
+        menu = menus.MenuPages(PlaylistsDisplayer(playlist_songs,per_page=10))
+        return await menu.start(ctx)
     
-    @playlist.command()
+    @playlist.command(aliases=["addsong"])
     async def addsongs(self,ctx,playlist_name,*songs):
         await ctx.message.edit(suppress=True)
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
@@ -653,6 +670,7 @@ class Music(commands.Cog):
             except KeyError:
                 song_inserted = await self.bot.db.execute_insert(sql,(song["title"].lower(),song["webpage_url"]))
                 new_song_id = song_inserted[0]
+                self._songs[song["title"]] = {"url":song["webpage_url"],"id":new_song_id}
             await self.bot.db.execute("INSERT INTO songs_in_playlists(playlist_id,song_id,position) VALUES(?,?,?)",(playlist_exists,new_song_id,song_position))
             self._playlists[ctx.guild.id][playlist_exists]["songs"][new_song_id] = {"url":song["webpage_url"],"title":song["title"]}
             song_position += 1
@@ -690,7 +708,7 @@ class Music(commands.Cog):
             return await ctx.send(f"Wait. You want to delete songs that comes after the first {n} songs, but the playlist only contains {number_of_songs} songs.")
         await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position >= ?",(n,))
         await self.bot.db.commit()
-        songs = self._playlists[ctx.guild.id][playlist_exists]["songs"].items()
+        songs = [i for i in self._playlists[ctx.guild.id][playlist_exists]["songs"].items()]
         for i in range(n-1,len(songs)):
             song_id = songs[i][0]
             del self._playlists[ctx.guild.id][playlist_exists]["songs"][song_id]
@@ -714,19 +732,21 @@ class Music(commands.Cog):
         else:
             await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position <= ?",(n,))
             await self.bot.db.commit()
-            songs = self._playlists[ctx.guild.id][playlist_exists]["songs"].items()
+            songs = [i for i in self._playlists[ctx.guild.id][playlist_exists]["songs"].items()]
             for i in range(n):
                 song_id = songs[i][0]
                 del self._playlists[ctx.guild.id][playlist_exists]["songs"][song_id]
             await self._update_songs_position(ctx.guild.id,playlist_exists)
             return await ctx.send(f"Successfully removed first {number_of_songs - n} songs.")
     
-    @commands.command(aliases=["removefromto"])
+    @playlist.command(aliases=["removefromto"])
     async def delfromto(self,ctx,playlist_name,slice:SliceConverter):
         start,end = slice
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         number_of_songs = self._count_songs_from_playlist(ctx.guild.id,playlist_exists)
         actual_playlist_name = self._playlists[ctx.guild.id][playlist_exists]["playlist_name"]
+        if start < 1:
+            start = 0
         if end > number_of_songs:
             end = number_of_songs
         try:
@@ -737,12 +757,12 @@ class Music(commands.Cog):
         else:
             await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position >= ? AND position <= ?",(start,end))
             await self.bot.db.commit()
-            songs = self._playlists[ctx.guild.id][playlist_exists]["songs"].items()
+            songs = [i for i in self._playlists[ctx.guild.id][playlist_exists]["songs"].items()]
             for i in range(start,end+1):
                 song_id = songs[i][0]
                 del self._playlists[ctx.guild.id][playlist_exists]["songs"][song_id]
             await self._update_songs_position(ctx.guild.id,playlist_exists)
-            return await ctx.send(f"Deleted {end - start} (index {start} to {end}).")
+            return await ctx.send(f"Deleted {end - start + 1} (index {start} to {end}).")
 
     @pause.before_invoke
     @stop.before_invoke
@@ -753,6 +773,7 @@ class Music(commands.Cog):
     @remove.before_invoke
     @insert.before_invoke
     @playprevious.before_invoke
+    @shuffle.before_invoke
     async def ensure_same_voice_channel(self,ctx):
         if ctx.voice_client is None:
             raise NoVoiceClient("I'm currently not connected to a voice channel.")        
