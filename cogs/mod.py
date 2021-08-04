@@ -6,11 +6,33 @@ from bot import TimeConverter,get_prefix
 import datetime
 
 class Moderation(commands.Cog):
-    def __init__(self,bot:commands.Bot):
-        super().__init__()
+    def __init__(self,bot):
         self.bot = bot
+        self.ignored_channels = set()
+        self.ignored_members = dict()
+        self.bot.loop.create_task(self._cache_ignored_members())
+        self.bot.loop.create_task(self._cache_ignored_channels())
         self.unban_loop.start()
         self.unmute_loop.start()
+
+    async def _cache_ignored_members(self):
+        await self.bot.wait_until_ready()
+        async with self.bot.db.execute("SELECT * FROM ignored_members") as cursor:
+            result = await cursor.fetchall()
+        for member_id,guild_id in result:
+            try:
+                self.ignored_members[guild_id].add(member_id)
+            except KeyError:
+                self.ignored_members[guild_id] = set([member_id])
+        return
+
+    async def _cache_ignored_channels(self):
+        await self.bot.wait_until_ready()
+        async with self.bot.db.execute("SELECT * FROM ignored_channels") as cursor:
+            result = await cursor.fetchall()
+        for channel_id in result:
+            self.ignored_channels.add(channel_id[0])
+        return
 
     async def unban_task(self,unbanning):
         ban_id,member_id,guild_id,unban_time = unbanning
@@ -37,7 +59,6 @@ class Moderation(commands.Cog):
                 await self.unban_task(row)
                 
     async def unmute_task(self,unmuting):
-        print(unmuting)
         mute_id,member_id,guild_id,unmute_time = unmuting
         t = datetime.datetime.strptime(unmute_time,"%Y-%m-%d %H:%M:%S")
         await discord.utils.sleep_until(t)
@@ -81,14 +102,15 @@ class Moderation(commands.Cog):
         """
         if not ctx.guild:
             raise commands.NoPrivateMessage("This bot doesn't work on DM channels.")
-        is_channel_ignored = await self.bot.db.execute("SELECT * FROM ignored_channels WHERE channel_id = ?",(ctx.channel.id,))
-        res_channel = await is_channel_ignored.fetchone()
-        is_member_ignored = await self.bot.db.execute("SELECT * FROM ignored_members WHERE member_id = ? AND guild_id = ?",(ctx.author.id,ctx.guild.id))
-        res_member = await is_member_ignored.fetchone()
-        if res_channel:
+        if ctx.author.guild_permissions.administrator: #Bypass
+            return True
+        if ctx.channel.id in self.ignored_channels:
             raise commands.DisabledCommand("You can't use commands in this channel.")
-        if res_member:
-            raise commands.DisabledCommand("You are not allowed to use commands on this server.")
+        try:
+            if ctx.author.id in self.ignored_members[ctx.guild.id]:
+                raise commands.DisabledCommand("You are not allowed to use commands on this server.")
+        except KeyError: #The guild doesn't have ignored members, so we can just skip it
+            return True
         return True
         
     @commands.Cog.listener()
@@ -428,23 +450,33 @@ class Moderation(commands.Cog):
             - bot asks you if you want to allow them to use commands. Type 'yes' to remove the ignore status on them.
         2) If the member can currently use commands, they are now disabled for them.
         """
-        cursor = await self.bot.db.execute("SELECT member_id FROM ignored_members WHERE member_id = ? AND guild_id = ?",(member.id,ctx.guild.id)) 
-        result = await cursor.fetchone()
-        if result: #Is member already ignored
-            await ctx.send("This member is already ignored. Type 'yes' if you want them to be able to use commands on this server !")
-            try: #Confirm
-                confirm = await self.bot.wait_for("message",check=lambda m: m.author == ctx.author and m.channel == ctx.channel,timeout=10)
-            except asyncio.TimeoutError:
-                await ctx.send("You didn't answer fast enough. Aborting the process !")
-            else:
-                if confirm.content.lower() == "yes": #confirmation
-                    await self.bot.db.execute("DELETE FROM ignored_members WHERE member_id = ? AND guild_id = ?",(member.id,ctx.guild.id))
-                    await self.bot.db.commit()
-                    await ctx.send(f"{member.mention} now has enabled commands !")
-        else:
+        async def _ignore_member():
             await self.bot.db.execute("INSERT INTO ignored_members VALUES(?,?);",(member.id,ctx.guild.id))
             await self.bot.db.commit()
-            await ctx.send(f"{member.mention} now has disabled commands !",allowed_mentions=self.bot.no_mentions)
+            try:
+                self.ignored_members[ctx.guild.id].add(member.id)
+            except KeyError:
+                self.ignored_members[ctx.guild.id] = {member.id}
+            return await ctx.send(f"{member.mention} now has disabled commands !",allowed_mentions=self.bot.no_mentions)
+        try:
+            is_member_banned = member.id in self.ignored_members[ctx.guild.id]
+        except KeyError:
+            await _ignore_member()
+        else:
+            if is_member_banned:
+                await ctx.send("This member is already ignored. Type 'yes' if you want them to be able to use commands on this server !")
+                try: #Confirm
+                    confirm = await self.bot.wait_for("message",check=lambda m: m.author == ctx.author and m.channel == ctx.channel,timeout=10)
+                except asyncio.TimeoutError:
+                    await ctx.send("You didn't answer fast enough. Aborting the process !")
+                else:
+                    if confirm.content.lower() == "yes": #confirmation
+                        await self.bot.db.execute("DELETE FROM ignored_members WHERE member_id = ? AND guild_id = ?",(member.id,ctx.guild.id))
+                        await self.bot.db.commit()
+                        self.ignored_members[ctx.guild.id].remove(member.id)
+                        await ctx.send(f"{member.mention} now has enabled commands !")
+            else:
+                await _ignore_member()
 
     @ignore.command()
     async def channel(self,ctx,channel:discord.TextChannel=None):
@@ -454,9 +486,9 @@ class Moderation(commands.Cog):
         1) Same as member. If the channel is already ignored, then you can delete it by typing 'yes'.
         2) Else,if the channel has commands enabled, it disables them from now on and says every time someone tries to use a command that commands aren't available on this channel
         """
-        cursor = await self.bot.db.execute("SELECT channel_id FROM ignored_channels WHERE channel_id = ?",(channel.id,))
-        result = await cursor.fetchone()
-        if result: #is channel already ignored
+        channel = channel or ctx.channel
+        is_channel_ignored = channel.id in self.ignored_channels
+        if is_channel_ignored:
             await ctx.send("This channel is already ignored. Type 'yes' if you want people to be able to use commands there !")
             try: #Confirm
                 confirm = await self.bot.wait_for("message",check=lambda m: m.author == ctx.author and m.channel == ctx.channel,timeout=10)
@@ -466,12 +498,14 @@ class Moderation(commands.Cog):
                 if confirm.content.lower() == "yes": #confirm 
                     await self.bot.db.execute("DELETE FROM ignored_channels WHERE channel_id = ?",(channel.id,))
                     await self.bot.db.commit()
+                    self.ignored_channels.remove(channel.id)
                     await ctx.send(f"{channel.mention} now has enabled commands !")
                 else:
                     await ctx.send("Aborting process !")
         else:
             await self.bot.db.execute("INSERT INTO ignored_channels VALUES(?);",(channel.id,))
             await self.bot.db.commit()
+            self.ignored_channels.add(channel.id)
             await ctx.send(f"{channel.mention} now has disabled commands !")
 
     @commands.group(invoke_without_command=True)
