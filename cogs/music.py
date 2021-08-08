@@ -4,12 +4,21 @@ from discord.ext import commands,menus
 import asyncio
 from async_timeout import timeout
 from functools import partial
+from dotenv import load_dotenv
 from youtube_dl import YoutubeDL
 from fuzzywuzzy import process
 import re
 import random
+import asyncspotify
+import os
+import datetime
 
-__all__ = ('NoVoiceClient',"NotSameVoiceChannel","AuthorIsNotInVoiceChannel","PlaylistNotFound","SongNotInPlaylist","InvalidSlice")
+load_dotenv()
+SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+
+
+__all__ = ('NoVoiceClient',"NotSameVoiceChannel","AuthorIsNotInVoiceChannel","PlaylistNotFound","SongNotInPlaylist","InvalidSlice","InvalidPlaylistLink")
 
 ytdlopts = {
     'format': 'bestaudio/best',
@@ -46,6 +55,9 @@ class SongNotInPlaylist(commands.CommandError):
 class InvalidSlice(commands.CommandError):
     """A class that represents that the fact that was inputted is wrong (doesn't match \d:\d)"""
 
+class InvalidPlaylistLink(commands.CommandError):
+    """A class that represents the fact a playlist share link wasn't the right one. Should look like : https://open.spotify.com/playlist/2Uor0e3UQxqCNRKmYpchpV?si=be08ba908c1744fb"""
+
 class LowerConverter(commands.Converter):
     async def convert(self, ctx, argument):
         return argument.lower()
@@ -67,8 +79,17 @@ class PlaylistsDisplayer(menus.ListPageSource):
         return embed
 
 class PlaylistInfosDisplayer(menus.ListPageSource):
+
+    def __init__(self, entries, *, per_page,tp,author,title):
+        super().__init__(entries, per_page=per_page)
+        self.timestamp = tp
+        self.creator = author
+        self.playlist_title = title
+
     async def format_page(self, menu, item):
-        embed = discord.Embed(title="Playlists ",description="\n".join(item))
+        embed = discord.Embed(title=f"`{self.playlist_title}` playlist.",description="\n".join(item))
+        embed.add_field(name="Created at :",value=f"<t:{self.timestamp}:f>")
+        embed.add_field(name="Creator :",value=self.creator.mention)
         return embed
 
 ytdl = YoutubeDL(ytdlopts)
@@ -323,6 +344,13 @@ class Music(commands.Cog):
             await self.bot.db.execute("UPDATE songs_in_playlists SET position = ? WHERE playlist_id = ? AND song_id = ?",(c,playlist_id,id))
         await self.bot.db.commit()
 
+    def _valid_spotify_playlist_url(self,url):
+        playlist_uri_pattern = re.compile(r"https://open.spotify.com/playlist/(\w{1,30})\?si=\w{1,30}")
+        result = playlist_uri_pattern.findall(url)
+        if not result :
+            raise InvalidPlaylistLink("Playlist URL is invalid. It must looks like : `https://open.spotify.com/playlist/2Uor0e3UQxqCNRKmYpchpV?si=020254f8611b4` (This playlist doesn't exist).")
+        return result[0]
+
     def register_songs(self,songs):
         songs_list = []
         for song in songs:
@@ -362,7 +390,7 @@ class Music(commands.Cog):
     async def on_member_remove(self,member):
         await self.bot.db.execute("UPDATE playlists SET creator_id = ? WHERE creator_id = ?",(None,member.id))
         await self.bot.db.commit()
-
+     
     @commands.command(aliases=["connect"])
     async def join(self,ctx,*,channel : discord.VoiceChannel=None):
         if channel is None:
@@ -626,8 +654,9 @@ class Music(commands.Cog):
     async def playlist(self,ctx,*,playlist_name):
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         playlist_songs = [i for i in self._playlists[ctx.guild.id][playlist_exists]["songs"].values()]
+        actual_playlist_name = self._playlists[ctx.guild.id][playlist_exists]["playlist_name"]
         await self.play_playlist(ctx,playlist_songs)
-        await ctx.send(f"Let's go ! I will play the songs of `{playlist_name}` playlist.")
+        await ctx.send(f"Let's go ! I will play the songs of `{actual_playlist_name}` playlist.")
 
     @playlist.command(aliases=['new'])
     async def create(self,ctx,*args):
@@ -700,7 +729,7 @@ class Music(commands.Cog):
         self._playlists_name[playlist_exists] = new_playlist_name
         return await ctx.send(f"Playlist name changed : `{actual_playlist_name}` -> `{new_playlist_name}`.")
 
-    @playlist.command()
+    @playlist.command(aliases=["infos"])
     async def info(self,ctx,*,playlist_name):
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         actual_playlist_name = self._playlists[ctx.guild.id][playlist_exists]["playlist_name"]
@@ -711,12 +740,16 @@ class Music(commands.Cog):
         async with self.bot.db.execute(sql,(playlist_id,)) as cursor:
             playlist_songs = [f"- [`{song[1].capitalize()}`]({song[0]})" for song in await cursor.fetchall()]
         creator = ctx.guild.get_member(playlist_infos[0]) or "Creator left the server."
+        datetime_object = datetime.datetime.strptime(playlist_infos[1],"%Y-%m-%d %H:%M:%S")
+        timestamp = int((datetime_object - datetime.datetime(1970,1,1)).total_seconds())
         if len(playlist_songs) <= 10:
+            datetime_object = datetime.datetime.strptime(playlist_infos[1],"%Y-%m-%d %H:%M:%S")
+            timestamp = int((datetime_object - datetime.datetime(1970,1,1)).total_seconds())
             em = discord.Embed(title=f"'{actual_playlist_name}' playlist - {len(playlist_songs)} songs.",description="\n".join(playlist_songs))
-            em.add_field(name="Created at :",value=playlist_infos[1])
+            em.add_field(name="Created at :",value=f"<t:{timestamp}:f>")
             em.add_field(name="Creator :",value=creator.mention)
             return await ctx.send(embed=em)
-        menu = menus.MenuPages(PlaylistInfosDisplayer(playlist_songs,per_page=10))
+        menu = menus.MenuPages(PlaylistInfosDisplayer(playlist_songs,per_page=10,tp=timestamp,author=creator,title=actual_playlist_name))
         return await menu.start(ctx)
     
     @playlist.command(aliases=["addsong"])
@@ -829,6 +862,41 @@ class Music(commands.Cog):
                 del self._playlists[ctx.guild.id][playlist_exists]["songs"][song_id]
             await self._update_songs_position(ctx.guild.id,playlist_exists)
             return await ctx.send(f"Deleted {end - start + 1} (index {start} to {end}).")
+
+    @commands.group(invoke_without_command=True)
+    async def spotify(self,ctx,url):
+        await ctx.message.edit(suppress=True)
+        await ctx.trigger_typing()
+        playlist_songs = []
+        playlist_uri = self._valid_spotify_playlist_url(url)
+        auth = asyncspotify.ClientCredentialsFlow(SPOTIFY_CLIENT_ID,SPOTIFY_CLIENT_SECRET)
+        async with asyncspotify.Client(auth) as sp:
+            try:
+                playlist = await sp.get_playlist(playlist_uri)
+            except asyncspotify.NotFound:
+                return await ctx.send("Playlist not found. Make sure it is public/collaborative, and double check the shareable link !")
+            else:
+                async for track in playlist:
+                    playlist_songs.append({"url":f"{track.name} {track.artists}"})
+        await ctx.send("I'm getting the tracks in the playlist from Spotify, wait !")
+        return await self.play_playlist(ctx,playlist_songs)
+    
+    @spotify.command(aliases=["savep"])
+    async def saveplaylist(self,ctx,url):
+        await ctx.trigger_typing()
+        playlist_uri = self._valid_spotify_playlist_url(url)
+        playlist_songs = []
+        auth = asyncspotify.ClientCredentialsFlow(SPOTIFY_CLIENT_ID,SPOTIFY_CLIENT_SECRET)
+        async with asyncspotify.Client(auth) as sp:
+            try:
+                playlist = await sp.get_playlist(playlist_uri)
+            except asyncspotify.NotFound:
+                return await ctx.send("Playlist not found. Make sure it is public/collaborative, and double check the shareable link !")
+            else:
+                playlist_songs.append(playlist.name)
+                async for track in playlist:
+                    playlist_songs.append(f"{track.name} {track.artists}")
+        await self.create(ctx,*playlist_songs)
 
     @pause.before_invoke
     @stop.before_invoke

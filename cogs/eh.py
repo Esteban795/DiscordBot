@@ -53,6 +53,8 @@ class ErrorHandler(commands.Cog):
             await ctx.send(error)
         elif isinstance(error,InvalidSlice):
             await ctx.send(error)
+        elif isinstance(error,InvalidPlaylistLink):
+            await ctx.send(error)
         else:
             raise error
 
