@@ -1,9 +1,24 @@
+import asyncio
 from discord.ext import commands
 
 class CustomOnMessage(commands.Cog):
+
     def __init__(self,bot):
         self.bot = bot
-    
+        self._custom_on_message = {}
+        self.bot.loop.create_task(self._cache_custom_on_message())
+
+    async def _cache_custom_on_message(self):
+        await self.bot.wait_until_ready()
+        async with self.bot.db.execute("SELECT * FROM custom_on_message") as cursor:
+            result = await cursor.fetchall()
+        for message,call,guild_id in result:
+            try:
+                self._custom_on_message[guild_id][message] = call
+            except KeyError: #The guild_id dict doesn't exist
+                self._custom_on_message[guild_id] = {}
+                self._custom_on_message[guild_id][message] = call
+
     @commands.Cog.listener()
     async def on_message(self,message):
         """
@@ -27,10 +42,12 @@ class CustomOnMessage(commands.Cog):
         """
         if message.author == self.bot.user or not message.guild:
             return
-        async with self.bot.db.execute(f"SELECT call FROM custom_on_message WHERE message = ? AND guild_id = ?",(message.content,message.guild.id)) as cursor: #Selects what the bot needs to say if the content of the message is registered in the db, else it is None.
-            result = await cursor.fetchone()
-            if result: 
-                await message.channel.send(result[0])
+        try:
+            msg = self._custom_on_message[message.guild.id][message.content]
+        except KeyError: #no custom on message found in the internal cache
+            pass
+        else:
+            return await message.channel.send(msg)
 
     @commands.group(aliases=["com"])
     async def custom_on_message(self,ctx):
@@ -58,8 +75,9 @@ class CustomOnMessage(commands.Cog):
             return await ctx.send(f"'{message}' already calls an other message ! Pick another name (this is case sensitive).")
         await self.bot.db.execute(f"INSERT INTO custom_on_message VALUES(?,?,?)",(message,call,ctx.guild.id))
         await self.bot.db.commit()
+        self._custom_on_message[ctx.guild.id][message] = call
         await ctx.send(f"Got it ! If anyone says '{message}', I will answer '{call}'.")
-    
+
     @custom_on_message.command()
     async def remove(self,ctx,message):
         """
@@ -81,9 +99,19 @@ class CustomOnMessage(commands.Cog):
         exists = await check_if_exists.fetchone()
         if not exists:
             return await ctx.send("Uhm. Actually, this message doesn't call any message from me. Can't remove something that doesn't exist, right ?")
-        await self.bot.db.execute(f"DELETE FROM custom_on_message WHERE message = ? AND guild_id = ?",(message,ctx.guild.id))
-        await self.bot.db.commit()
-        await ctx.send(f"Got it. I won't answer to '{message}' anymore !")
+        try:
+            await ctx.send(f"Are you sure you want to delete the `{message}` custom message ? Type 'yes' to confirm.")
+            confirm = await self.bot.wait_for("message",check=lambda m:m.author == ctx.author and ctx.channel == m.channel,timeout=15)
+        except asyncio.TimeoutError:
+            return await ctx.send("Aborting process.")
+        else:
+            if confirm.content.lower() == "yes":
+                await self.bot.db.execute(f"DELETE FROM custom_on_message WHERE message = ? AND guild_id = ?",(message,ctx.guild.id))
+                await self.bot.db.commit()
+                del self._custom_on_message[message]
+                return await ctx.send(f"Got it. I won't answer to '{message}' anymore !")
+            return await ctx.send("Well, now I am not doing it.")
+
 
     @custom_on_message.command()
     async def edit(self,ctx,message,*,call):
@@ -108,6 +136,7 @@ class CustomOnMessage(commands.Cog):
             return await ctx.send("Uhm. Actually, this message doesn't call any message from me. Can't edit something that doesn't exist, right ?")
         await self.bot.db.execute(f"UPDATE custom_on_message SET call = ? WHERE message = ? and guild_id = ?",(call,message,ctx.guild.id))
         await self.bot.db.commit()
+        self._custom_on_message[message] = call
         await ctx.send(f"Just edited what '{message}' calls. Now calls '{call}' ! ")
 
 def setup(bot):

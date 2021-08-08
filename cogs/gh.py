@@ -10,8 +10,8 @@ class Github(commands.Cog):
         self.MAX_LEN = 2000
         self.session = aiohttp.ClientSession()
     
-    def embed_builder(self,code,file_ext):
-        embed = discord.Embed(title="Here is the code you asked me to get !",color=0x00ff00,timestamp=datetime.utcnow())
+    def embed_builder(self,code,file_ext,repo_url):
+        embed = discord.Embed(title=f"Here is the code you asked me to get !",color=0x00ff00,timestamp=datetime.utcnow(),url=repo_url)
         embed.add_field(name="Code :",value=f"```{file_ext}\n{code}```" if len(code) <= 1023 else f"```{file_ext}\n{code[:900]}``` \n There is more, but I can't display it (more than 1024 characters)")
         return embed
 
@@ -43,7 +43,7 @@ class Github(commands.Cog):
         file_extension = is_valid[0][1] 
         async with self.session.get(raw_content_url) as r:
             raw_code = await r.text()
-        result = self.embed_builder(raw_code,file_extension)
+        result = self.embed_builder(raw_code,file_extension,url)
         return await ctx.send(embed=result)
 
     @github.command()
@@ -59,7 +59,7 @@ class Github(commands.Cog):
         async with self.session.get(raw_content_url) as r:
             raw_code = await r.text()
         lines = raw_code.splitlines()
-        result = self.embed_builder("\n".join(lines[start-1:end]),file_extension)
+        result = self.embed_builder("\n".join(lines[start-1:end]),file_extension,url)
         return await ctx.send(embed=result)
 
 def setup(bot):

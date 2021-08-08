@@ -102,7 +102,7 @@ class Moderation(commands.Cog):
         """
         if not ctx.guild:
             raise commands.NoPrivateMessage("This bot doesn't work on DM channels.")
-        if ctx.author.guild_permissions.administrator: #Bypass
+        if ctx.author.guild_permissions.administrator: #Bypass for ignored members/channels
             return True
         if ctx.channel.id in self.ignored_channels:
             raise commands.DisabledCommand("You can't use commands in this channel.")

@@ -66,6 +66,11 @@ class PlaylistsDisplayer(menus.ListPageSource):
         embed = discord.Embed(title="Playlists available : ",description="\n".join(item))
         return embed
 
+class PlaylistInfosDisplayer(menus.ListPageSource):
+    async def format_page(self, menu, item):
+        embed = discord.Embed(title="Playlists ",description="\n".join(item))
+        return embed
+
 ytdl = YoutubeDL(ytdlopts)
 
 class YTDLSource(discord.PCMVolumeTransformer):
@@ -140,6 +145,30 @@ class CustomQueue(asyncio.Queue):
 
     def shuffle(self):
         self._queue = random.sample(self._queue,k=len(self))
+    
+    def remove_range(self,start,end):
+        for i in range(start,end):
+            del self._queue[i]
+
+    def clear(self):
+        self._queue.clear()
+    
+    def move(self,song,new_index:int):
+        songs_titles = [song["title"] for song in self._queue]
+        results = process.extract(song,songs_titles,limit=3)
+        if not results: #In case nothing matches the song
+            return None
+        index = 0
+        maxi = results[0][1]
+        for i in range(len(results)): #Results = [('choice',ratio_score),('choice2',ratio_score_2), ...]
+            if results[i][1] > maxi:
+                maxi = results[i][1]
+                index = i
+        song_removed = self._queue[index]
+        del self._queue[index]
+        self.insert(new_index,song_removed)
+        return song_removed["title"]
+        
         
 class MusicPlayer:
 
@@ -471,8 +500,16 @@ class Music(commands.Cog):
             if queue_size > 10:
                 em.set_footer(text=f"{queue_size - 10} others songs upcoming !")
             return await ctx.send(embed=em)
-    
-    @queue.command(aliases=["delete"])
+
+    @queue.command()
+    async def clear(self,ctx):
+        player = self.get_music_player(ctx)
+        if not len(player.queue):
+            return await ctx.send("Current queue is already empty.")
+        player.queue.clear()
+        return await ctx.send("Cleared the queue.")
+
+    @queue.group(aliases=["delete"])
     async def remove(self,ctx,index:int):
         if index < 1:
             return await ctx.send("A song index cannot be lower than 1. How could I delete a song that doesn't exist ?")
@@ -483,17 +520,31 @@ class Music(commands.Cog):
         player.queue.remove(index - 1)
         return await ctx.send(f"Removed `{song_removed['title']}` from the queue.")
 
+    @remove.command()
+    async def range(self,ctx,slice:SliceConverter):
+        player = self.get_music_player(ctx)
+        l = player.queue
+        if not l:
+            return await ctx.send("Current queue is empty.You want me to remove the emptiness of it ?")
+        start,end = slice
+        if start < 0:
+            start = 0
+        if end >= l:
+            end = l
+        player.queue.remove_range(start,end)
+        return await ctx.send(f"Removed songs from index {start} to {end} ({end - start + 1} songs).")
+
     @queue.command()
-    async def insert(self,ctx,n:int,*,song):
+    async def insert(self,ctx,index:int,*,song):
         await ctx.message.edit(suppress=True)
         player = self.get_music_player(ctx)
-        if n < 1:
-            n = 0
-        elif n > len(player.queue):
-            n = len(player.queue)
+        if index < 1:
+            index = 0
+        elif index > len(player.queue):
+            index = len(player.queue)
         source = await YTDLSource.create_source(ctx,search=song,loop=self.bot.loop)
-        player.queue.insert(n - 1,source)
-        return await ctx.send(f"Inserted `{source['title']}` at index {n} of this queue.")
+        player.queue.insert(index - 1,source)
+        return await ctx.send(f"Inserted `{source['title']}` at index {index} of this queue.")
     
     @queue.command()
     async def jump(self,ctx,index:int):
@@ -515,6 +566,31 @@ class Music(commands.Cog):
         player.queue.shuffle()
         return await ctx.send("Shuffled the queue !")
 
+    @queue.command()
+    async def move(self,ctx,new_index:int,*,title):
+        player = self.get_music_player(ctx)
+        l = len(player.queue)
+        if l == 0:
+            return await ctx.send("Current queue is empty.")
+        if new_index < 1:
+            new_index = 1
+        elif new_index >= l:
+            new_index = l
+        song_moved = player.queue.move(title,new_index - 1)
+        if song_moved is None:
+            return await ctx.send(f"No song named `{title}` was found.")
+        return await ctx.send(f"Succesfully moved `{song_moved}` to index {new_index}.")
+
+    @queue.command()
+    async def loop(self,ctx):
+        player = self.get_music_player(ctx)
+        if not ctx.voice_client.is_playing():
+            return await ctx.send("I'm currently not playing anything.")
+        player.loop = not player.loop
+        if player.loop:
+            return await ctx.send("Looping the current song.")
+        return await ctx.send("Removing the loop on the current song.")
+
     @commands.command()
     async def volume(self,ctx,vol:int):
         if not ctx.voice_client.is_playing():
@@ -526,16 +602,6 @@ class Music(commands.Cog):
             ctx.voice_client.source.volume = vol/100
         player.volume = vol/100
         return await ctx.send(f"Volume set to {vol}.")
-    
-    @commands.command()
-    async def loop(self,ctx):
-        player = self.get_music_player(ctx)
-        if not ctx.voice_client.is_playing():
-            return await ctx.send("I'm currently not playing anything.")
-        player.loop = not player.loop
-        if player.loop:
-            return await ctx.send("Looping the current song.")
-        return await ctx.send("Removing the loop on the current song.")
 
     @commands.command()
     async def playlists(self,ctx):
@@ -645,12 +711,12 @@ class Music(commands.Cog):
         async with self.bot.db.execute(sql,(playlist_id,)) as cursor:
             playlist_songs = [f"- [`{song[1].capitalize()}`]({song[0]})" for song in await cursor.fetchall()]
         creator = ctx.guild.get_member(playlist_infos[0]) or "Creator left the server."
-        if len(playlist_songs) < 10:
+        if len(playlist_songs) <= 10:
             em = discord.Embed(title=f"'{actual_playlist_name}' playlist - {len(playlist_songs)} songs.",description="\n".join(playlist_songs))
             em.add_field(name="Created at :",value=playlist_infos[1])
             em.add_field(name="Creator :",value=creator.mention)
             return await ctx.send(embed=em)
-        menu = menus.MenuPages(PlaylistsDisplayer(playlist_songs,per_page=10))
+        menu = menus.MenuPages(PlaylistInfosDisplayer(playlist_songs,per_page=10))
         return await menu.start(ctx)
     
     @playlist.command(aliases=["addsong"])
@@ -784,7 +850,6 @@ class Music(commands.Cog):
         else:
             if author_vc != ctx.voice_client.channel: #Author isn't in the same voice channel as bot
                 raise NotSameVoiceChannel("You must be connected to my voice channel to use this command.")
-
 
 def setup(bot):
     bot.add_cog(Music(bot))
