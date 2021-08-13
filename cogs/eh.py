@@ -1,7 +1,8 @@
-from discord.errors import Forbidden
 from discord.ext import commands
 from difflib import get_close_matches
 from cogs.music import *
+from cogs.giveaway import *
+
 class ErrorHandler(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
@@ -36,6 +37,7 @@ class ErrorHandler(commands.Cog):
         elif isinstance(error,commands.NotOwner):
             await ctx.send("You must be the owner of this bot to perform this command. Please contact Esteban#7985 for more informations.")
         elif isinstance(error,commands.BadArgument):
+            print(error)
             await ctx.send(error)
         elif isinstance(error,commands.DisabledCommand):
             await ctx.send(error)
@@ -54,6 +56,8 @@ class ErrorHandler(commands.Cog):
         elif isinstance(error,InvalidSlice):
             await ctx.send(error)
         elif isinstance(error,InvalidPlaylistLink):
+            await ctx.send(error)
+        elif isinstance(error,GiveawayNotFound):
             await ctx.send(error)
         else:
             raise error

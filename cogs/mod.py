@@ -202,7 +202,7 @@ class Moderation(commands.Cog):
                 await channel.set_permissions(muted_role, send_messages = False, speak = False)
         if self.bot_has_higher_role(member):
             await member.add_roles(muted_role)
-            await ctx.send(f"Muted {member} for {time}s" if time else "Muted {}")
+            await ctx.send(f"Muted {member} for {time}s" if time else f"Muted {member}")
             if time:
                 mute_duration = datetime.timedelta(seconds=time)
                 already_muted = await self.bot.db.execute("SELECT unmute_time FROM mutes WHERE member_id = ? AND guild_id = ?",(member.id,member.guild.id))
