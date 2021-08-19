@@ -49,13 +49,13 @@ class CustomOnMessage(commands.Cog):
         else:
             return await message.channel.send(msg)
 
-    @commands.group(aliases=["com"])
+    @commands.group(aliases=["com"],help="Does nothing without subcommands.")
     async def custom_on_message(self,ctx):
         """Nothing special here. You need to use subcommands."""
         if ctx.invoked_subcommand is None:
             return await ctx.send("Subcommand required.")
     
-    @custom_on_message.command()
+    @custom_on_message.command(help="Lets you add a custom on message to this server.")
     async def add(self,ctx,message,*,call):
         """
         Lets you add custom on_message to the bot. 
@@ -78,7 +78,7 @@ class CustomOnMessage(commands.Cog):
         self._custom_on_message[ctx.guild.id][message] = call
         await ctx.send(f"Got it ! If anyone says '{message}', I will answer '{call}'.")
 
-    @custom_on_message.command()
+    @custom_on_message.command(help="Lets you remove a custom on message of this server.")
     async def remove(self,ctx,message):
         """
         Lets you remove customs on_message from the bot.
@@ -113,7 +113,7 @@ class CustomOnMessage(commands.Cog):
             return await ctx.send("Well, now I am not doing it.")
 
 
-    @custom_on_message.command()
+    @custom_on_message.command(help="Lets you edit a custom on message of this server.")
     async def edit(self,ctx,message,*,call):
         """
         Lets you edit custom on_message from the bot.

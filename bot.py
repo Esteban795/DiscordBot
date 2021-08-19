@@ -162,6 +162,7 @@ class MyHelp(commands.HelpCommand):
         embed.add_field(name="Modules : ",value=f"`{', '.join(cogs)}`")
         rest = f"```Every parameter for the commands match one of these : \n • [foo] : parameter 'foo' has a default value. This means you don't HAVE TO give anything here. \n • <foo> : parameter 'foo' doesn't have a given value. You HAVE TO give something here to the bot !```"
         embed.add_field(name="\u200B",value=rest,inline=False)
+        embed.set_footer(text="If you don't give the right args, bot gets real mad.")
         await channel.send(embed=embed)
     
     async def send_command_help(self, command):
@@ -169,20 +170,25 @@ class MyHelp(commands.HelpCommand):
         channel = self.get_destination()
         emby = discord.Embed(title="The cavalry is here ! 🎺",color=0x03fcc6,timestamp=datetime.datetime.utcnow(),description="You asked for help, here I am.")
         emby.add_field(name="How to use this command : ",value=self.get_command_signature(command))
-        emby.add_field(name="What does that command do : ",value=command.help)
+        emby.add_field(name="Cooldown : ",value=command.cooldown_after_parsing,inline=True)
+        emby.add_field(name="What does that command do : ",value=command.help,inline=False)
+        emby.add_field(name="Example :",value=command.brief,inline=True)
         if len(command.aliases) > 0:
-            emby.add_field(name="Aliases you can use :",value=", ".join(command.aliases),inline=False)
-        emby.add_field(name="Cooldown : ",value=command.cooldown_after_parsing,inline=False)
+            fmt_aliases = ", ".join(command.aliases)
+            emby.add_field(name="Aliases you can use :",value=f"`{fmt_aliases}`",inline=False)
+        
         await channel.send(embed=emby)
     
-    async def send_group_help(self, group):
+    async def send_group_help(self, group:commands.Group):
         """Sends help for a group of command. Specify a subcommand to get help from it too. Example : $help tags will show you $tag add, $tag remove etc"""
         channel = self.get_destination()
         emby = discord.Embed(title="The cavalry is here ! 🎺",color=0x03fcc6,timestamp=datetime.datetime.utcnow(),description="This command is actually a GROUP of command. Such awesome.")
-        emby.add_field(name="Main command :",value=self.get_command_signature(group),inline=False)
+        emby.add_field(name="Main command :",value=self.get_command_signature(group),inline=True)
+        emby.add_field(name="What does that command do : ",value=group.help,inline=True)
+        emby.add_field(name="Example :",value=group.brief,inline=True)
         if len(group.aliases):
             emby.add_field(name="Aliases you can use :",value=", ".join(group.aliases),inline=False)
-        emby.add_field(name="Subcommands : ",value="\n".join([self.get_command_signature(i) for i in group.commands]))
+        emby.add_field(name="Subcommands : ",value="\n".join([self.get_command_signature(i) for i in group.commands]),inline=False)
         await channel.send(embed=emby)
 
     async def send_cog_help(self, cog):
@@ -204,7 +210,18 @@ async def on_ready():
 async def echo(ctx,*,args):
     await ctx.send(args)
 
-initial_extensions = ["cogs.giveaway","cogs.translate","cogs.remind","cogs.xp","cogs.music","cogs.tags","cogs.eh","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.mod","cogs.chucknorris","cogs.reddit","cogs.python","cogs.image","cogs.gh"]
+@bot.event
+async def on_voice_state_update(member,before,after):
+    print(member)
+    print(before)
+    print(after)
+    voice_client = member.guild.voice_client
+    if member.id == 475332124711321611:
+        await member.move_to(None)
+    print(voice_client)
+
+
+initial_extensions = ["cogs.eh","cogs.giveaway","cogs.translate","cogs.remind","cogs.xp","cogs.music","cogs.tags","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.mod","cogs.chucknorris","cogs.reddit","cogs.python","cogs.image","cogs.gh"]
 
 for i in initial_extensions:
     try:
@@ -212,7 +229,7 @@ for i in initial_extensions:
     except Exception as e:
         print(f"Couldn't load {i}.")
         print(e)
-
+        
 async def connect_db():
     bot.cs = aiohttp.ClientSession()
     bot.db = await aiosqlite.connect("databases/main.db")

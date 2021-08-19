@@ -6,7 +6,7 @@ class ChuckNorris(commands.Cog):
     def __init__(self,bot):
         self.bot = bot
 
-    @commands.command(aliases=["cn","nc"])
+    @commands.command(aliases=["cn","nc"],help="Display a Chuck Norris joke. See `cncategories` to know which categories are available.")
     async def chucknorris(self,ctx,category=None):
         """
         Use this to get the best Chuck Norris jokes. Usage : $chucknorris (a category, available with cncategories)
@@ -37,7 +37,7 @@ class ChuckNorris(commands.Cog):
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
             
-    @commands.command(aliases=["cncat","cnc"])
+    @commands.command(aliases=["cncat","cnc"],help="Display the categories availables for Chuck Norris jokes.")
     async def cncategories(self,ctx):
         """List the categories available from the API
         

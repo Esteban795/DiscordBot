@@ -19,7 +19,7 @@ class Logs(commands.Cog):
         ### Returns :
         - The log channel ID if there is one in the database, else None.
         """
-        cursor = await self.bot.db.execute("SELECT channel_id FROM logs_channels WHERE guild_id = (?);",(guild_id,))
+        cursor = await self.bot.db.execute("SELECT channel_id FROM logs_channels WHERE guild_id = ?;",(guild_id,))
         result = await cursor.fetchone()
         if result:
             return result[0]
@@ -54,7 +54,7 @@ class Logs(commands.Cog):
         - A message that confirms you your channel was correctly added to the database.
         """
         text_channel = text_channel or ctx.channel
-        await self.bot.db.execute("INSERT INTO logs_channels VALUES(?,?);",(ctx.guild.id,text_channel.id))
+        await self.bot.db.execute("INSERT INTO logs_channels VALUES(?,?);",(text_channel.id,ctx.guild.id))
         await self.bot.db.commit()
         await text_channel.send(f"{ctx.author} picked this channel to be the log channel. I will send everything I can track here (kick, ban, messages deleted,reactions added etc..).")
 
@@ -65,26 +65,6 @@ class Logs(commands.Cog):
         await self.bot.db.execute("DELETE FROM logs_channels WHERE guild_id = (?);",(ctx.guild.id,))
         await self.bot.db.commit()
         await ctx.send(f"{ctx.author} decided to disable the logs in this server. You can always re-add it back later !")
-        
-    @commands.Cog.listener()
-    async def on_message(self,message):
-        """On_message event to help us log everything.
-        
-        ### Parameters : 
-        - message : discord.Message object. This is automatically provided by the API, so no user input.
-
-        ### Returns :
-        - Send a log message with the content of the message into the log channel predefined by a command.
-        """
-        if not message.author.bot and not message.is_system() and message.guild:
-            channel_id = await self.get_logs_channels(message.guild.id)
-            if channel_id:
-                channel = message.guild.get_channel(channel_id)
-                logEmbed = discord.Embed(title="New message !",color=0xaaffaa,timestamp=datetime.utcnow())
-                logEmbed.add_field(name="Channel :",value=message.channel.mention)
-                logEmbed.add_field(name="Message : ",value=f"[{message.content}]({message.jump_url})")
-                logEmbed.set_author(name=message.author,icon_url=message.author.avatar_url)
-                await channel.send(embed=logEmbed)
     
     @commands.Cog.listener()
     async def on_raw_reaction_add(self,payload):
@@ -92,17 +72,15 @@ class Logs(commands.Cog):
             channel_id = await self.get_logs_channels(payload.guild_id)
             if channel_id:
                 channel = payload.member.guild.get_channel(channel_id)
-                reaction_channel = payload.member.guild.get_channel(payload.channel_id)
-                msg = await reaction_channel.fetch_message(payload.message_id)
                 reaction_embed = discord.Embed(title="Reaction added.",color=0xaaffaa,timestamp=datetime.utcnow())
-                reaction_embed.add_field(name="Member who added the reaction :",value=payload.member)
-                reaction_embed.add_field(name="Reaction added :",value=payload.emoji.name)
-                reaction_embed.add_field(name="Original message :",value=f"[{msg.content}]({msg.jump_url})")
+                reaction_embed.add_field(name="Member who added the reaction :",value=payload.member.mention)
+                reaction_embed.add_field(name="Reaction added :",value=(payload.emoji.name if not payload.emoji.id else f"<a:{payload.emoji.name}:{payload.emoji.id}>" if payload.emoji.animated else f"<:{payload.emoji.name}:{payload.emoji.id}>"))
+                reaction_embed.add_field(name="Original message :",value=f"[jump ! ](https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id})")
                 await channel.send(embed=reaction_embed)
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self,payload):
-        user = self.bot.get_user(payload.user_id)
+        user = self.bot.get_user(payload.user_id) or await self.bot.fetch_user(payload.user_id)
         if not user.bot:
             channel_id = await self.get_logs_channels(payload.guild_id)
             if channel_id:
@@ -111,10 +89,9 @@ class Logs(commands.Cog):
                 reaction_channel = guild.get_channel(payload.channel_id)
                 msg = await reaction_channel.fetch_message(payload.message_id)
                 reaction_embed = discord.Embed(title="Reaction removed.",color=0xaaffaa,timestamp=datetime.utcnow())
-                reaction_embed.add_field(name="Member who removed the reaction :",value=user)
-                reaction_embed.add_field(name="Reaction removed :",value=payload.emoji.name)
-                reaction_embed.add_field(name="Original message :",value=f"[{msg.content}]({msg.jump_url})")
-                reaction_embed.set_author(name=user,icon_url=user.avatar_url)
+                reaction_embed.add_field(name="Member who removed the reaction :",value=user.mention)
+                reaction_embed.add_field(name="Reaction removed :",value=(payload.emoji.name if not payload.emoji.id else f"<a:{payload.emoji.name}:{payload.emoji.id}>" if payload.emoji.animated else f"<:{payload.emoji.name}:{payload.emoji.id}>"))
+                reaction_embed.add_field(name="Original message :",value=f"[jump ! ](https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id})")
                 await channel.send(embed=reaction_embed)
     
     @commands.Cog.listener()
@@ -273,6 +250,8 @@ class Logs(commands.Cog):
     
     @commands.Cog.listener()
     async def on_member_update(self,before,after):
+        print(before)
+        print(after)
         if before.activity != after.activity or before.status != after.status:
             return
         log_channel_id = await self.get_logs_channels(before.guild.id)

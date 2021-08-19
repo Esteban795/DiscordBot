@@ -16,6 +16,7 @@ class Moderation(commands.Cog):
         self.unmute_loop.start()
 
     async def _cache_ignored_members(self):
+        """Internal process to cache the ignored members' ids."""
         await self.bot.wait_until_ready()
         async with self.bot.db.execute("SELECT * FROM ignored_members") as cursor:
             result = await cursor.fetchall()
@@ -27,6 +28,7 @@ class Moderation(commands.Cog):
         return
 
     async def _cache_ignored_channels(self):
+        """Internal process to cache the ignored channels' ids."""
         await self.bot.wait_until_ready()
         async with self.bot.db.execute("SELECT * FROM ignored_channels") as cursor:
             result = await cursor.fetchall()
@@ -35,11 +37,18 @@ class Moderation(commands.Cog):
         return
 
     async def unban_task(self,unbanning):
+        """
+        Sleeps until unban_time, then unban the user.
+        """
         ban_id,member_id,guild_id,unban_time = unbanning
         t = datetime.datetime.strptime(unban_time,"%Y-%m-%d %H:%M:%S")
         await discord.utils.sleep_until(unban_time)
         guild = self.bot.get_guild(guild_id)
-        if guild is None or guild.unavailable:
+        if guild.unavailable:
+            return
+        if guild is None:
+            await self.bot.db.execute("DELETE FROM bans WHERE guild_id = ?",(guild_id,)) #Guild not cached anymore, most likely bot left the guild
+            await self.bot.db.commit()
             return
         banned = discord.Object(id=member_id)
         try:
@@ -52,6 +61,7 @@ class Moderation(commands.Cog):
         
     @tasks.loop(seconds=30)
     async def unban_loop(self):
+        """Checks every 30 seconds if a ban ends within 30 seconds"""
         await self.bot.wait_until_ready()
         sql = "SELECT ban_id,member_id,guild_id,unban_time FROM bans WHERE unban_time IS NOT NULL AND unbanned = 0 AND CAST((julianday(unban_time) - julianday('now'))*86400 AS INTEGER) <= 30"
         async with self.bot.db.execute(sql) as cursor:
@@ -59,11 +69,18 @@ class Moderation(commands.Cog):
                 await self.unban_task(row)
                 
     async def unmute_task(self,unmuting):
+        """
+        Sleeps until unmute_time, then unmute the user.
+        """
         mute_id,member_id,guild_id,unmute_time = unmuting
         t = datetime.datetime.strptime(unmute_time,"%Y-%m-%d %H:%M:%S")
-        await discord.utils.sleep_until(t)
+        await discord.utils.sleep_until(t) #Sleeps until datetime
         guild = self.bot.get_guild(guild_id)
-        if guild is None or guild.unavailable:
+        if guild.unavailable:
+            return
+        if guild is None:
+            await self.bot.db.execute("DELETE FROM mutes WHERE guild_id = ?",(guild_id,))
+            await self.bot.db.commit()
             return
         muted_role = discord.utils.get(guild.roles,name="Muted") or discord.utils.get(guild.roles,name="muted")
         if not muted_role:
@@ -159,7 +176,7 @@ class Moderation(commands.Cog):
         await self.bot.db.execute("DELETE FROM warns WHERE guild_id = ?",(guild.id))
         await self.bot.db.commit()
     
-    @commands.command(aliases=["addrole","roleadd"])
+    @commands.command(aliases=["addrole","roleadd"],help="Lets you add a role to a member.")
     @commands.bot_has_guild_permissions(manage_roles=True)
     @commands.has_permissions(manage_roles=True) #Check if the member of this guild has the permissions to manage roles.
     async def giverole(self,ctx,member:discord.Member,role:discord.Role):
@@ -170,7 +187,7 @@ class Moderation(commands.Cog):
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
         
-    @commands.command(aliases=["rmvrole"])
+    @commands.command(aliases=["rmvrole"],help="Removes a role from the member.")
     @commands.bot_has_guild_permissions(manage_roles=True)
     @commands.has_permissions(manage_roles = True)
     async def removerole(self,ctx,member : discord.Member, role:discord.Role):
@@ -181,7 +198,7 @@ class Moderation(commands.Cog):
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
 
-    @commands.command(aliases=["gtfo"])
+    @commands.command(aliases=["gtfo"],help="Kicks a member from the guild.")
     @commands.has_permissions(kick_members = True)
     async def kick(self,ctx, member: discord.Member, *,reason="Not specified."):
         """Sends [member] a DM telling them they got kicked from the server you're in with the reason (if you told one)"""
@@ -191,8 +208,9 @@ class Moderation(commands.Cog):
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
 
-    @commands.command()
-    @commands.has_permissions()
+    @commands.command(help="Mutes a member for the inputted duration. If the member was already muted, it adds the previous duration to this one.")
+    @commands.has_permissions(manage_roles=True)
+    @commands.bot_has_permissions(manage_roles=True)
     async def mute(self,ctx,member:discord.Member,time:TimeConverter=None):
         """Gives [member] the Muted role (they can't speak or write) for (time) if you specified one. After the mute duration is over, it automatically demutes them"""
         muted_role = discord.utils.get(ctx.guild.roles,name="Muted") or discord.utils.get(ctx.guild.roles,name="muted") #Get the discord.Role instance
@@ -208,7 +226,7 @@ class Moderation(commands.Cog):
                 already_muted = await self.bot.db.execute("SELECT unmute_time FROM mutes WHERE member_id = ? AND guild_id = ?",(member.id,member.guild.id))
                 result_already_muted = await already_muted.fetchone()
                 if result_already_muted:
-                    prev_unmute_time = datetime.datetime.strptime(result_already_muted[0])
+                    prev_unmute_time = datetime.datetime.strptime(result_already_muted[0],"%Y-%m-%d %H:%M:%S")
                     new_unmute_time = prev_unmute_time + mute_duration
                     await self.bot.db.execute("UPDATE mutes SET unmute_time = ? WHERE member_id = ? AND guild_id = ?",(new_unmute_time.replace(microsecond=0),member.id,member.guild.id))
                 else:
@@ -216,8 +234,9 @@ class Moderation(commands.Cog):
                     await self.bot.db.execute("INSERT INTO mutes(member_id,guild_id,unmute_time) VALUES(?,?,?);",(member.id,member.guild.id,unmute_time.replace(microsecond=0)))
                 await self.bot.db.commit()
 
-    @commands.command(aliases=["demute"])
-    @commands.has_permissions()
+    @commands.command(aliases=["demute"],help="Unmute a member,no matter the duration.")
+    @commands.has_permissions(manage_roles=True)
+    @commands.bot_has_permissions(manage_roles=True)
     async def unmute(self,ctx,member:discord.Member,*,reason="Moderator."):
         """Removes the Muted role from the member. They now have the permission to speak/write"""
         muted_role = discord.utils.get(ctx.guild.roles,name="Muted") or discord.utils.get(ctx.guild.roles,name="muted")
@@ -226,9 +245,12 @@ class Moderation(commands.Cog):
         if self.bot_has_higher_role(member):
             await member.remove_roles(muted_role)
             await ctx.send(f"{member} was unmuted.")
-
+            await self.bot.db.execute("UPDATE mutes SET done = 1, unmute_reason = ? WHERE member_id = ? and guild_id = ?",(reason,member.id,ctx.guild.id))
+            await self.bot.db.commit()
+            
     @commands.command(aliases=["banl","bl"])
-    @commands.has_permissions(administrator = True)
+    @commands.has_permissions(manage_guild=True)
+    @commands.bot_has_permissions(manage_guild=True)
     async def banlist(self,ctx):
         """Sends the current banlist from this server""" 
         bans = await ctx.guild.bans()
@@ -243,7 +265,7 @@ class Moderation(commands.Cog):
             embedVar.set_footer(text=f"Requested by {ctx.author}.")
             await ctx.send(embed=embedVar)
 
-    @commands.group(invoke_without_command=True)
+    @commands.group(invoke_without_command=True,help="Bans a member from the guild. You can input a reason or not, depends on you !")
     @commands.has_permissions(ban_members = True)
     @commands.bot_has_guild_permissions(ban_members=True)
     async def ban(self,ctx,member:discord.Member,*,reason="Not specified."):
@@ -260,7 +282,7 @@ class Moderation(commands.Cog):
                     await self.bot.db.commit()
                     return await ctx.send(f"Banned {member}.") 
 
-    @ban.command()
+    @ban.command(help="Bans a member that said any banned words in the last 100 messages. Reason must be quoted if more than s single word.")
     async def match(self,ctx,reason,*banned_words):
         """Bans every member that said [words] in the last 100 messages of this channel. Reason must be quoted if it isn't a single word"""
         last_100_messages = await ctx.channel.history(limit=100).flatten() #Is a list of last 100 messages from this channel.
@@ -284,7 +306,7 @@ class Moderation(commands.Cog):
         else:
             await ctx.send("No one said those awful words.")
 
-    @ban.group(invoke_without_command=True)
+    @ban.group(invoke_without_command=True,help="Ban a user for a duration. Duration must be in the form of 1d, 12.5m etc..")
     async def time(self,ctx,member:discord.Member,time:TimeConverter,*,reason="Not specified."):
         """Basically a ban command where you can add a duration. Once it's over, the bot automatically unbans the member"""
         if ctx.invoked_subcommand is None:
@@ -299,7 +321,7 @@ class Moderation(commands.Cog):
                 await self.bot.db.commit()
                 await member.ban(reason=reason)
 
-    @time.command()
+    @time.command(help="Bans a member for the duration, because they said a banned word in the last 100 message.")
     async def match(self,ctx,time:TimeConverter,reason,*banned_words):
         """Bans every member that said [words] in the last 100 messages of this channel for a [time] duration. Reason must be quoted if it isn't a single word"""
         last_100_messages = await ctx.channel.history(limit=100).flatten() #Is a list of last 100 messages from this channel.
@@ -324,7 +346,7 @@ class Moderation(commands.Cog):
         else:
             await ctx.send("No one said those awful words.")
 
-    @commands.command(aliases=["u","uban"])
+    @commands.command(aliases=["u","uban"],help="Unbans a user. You can either use their ID or their name + discriminator.")
     async def unban(self,ctx,user:discord.User):
         try:
             await ctx.guild.unban(user)
@@ -334,15 +356,18 @@ class Moderation(commands.Cog):
             return await ctx.send(f"Unbanned {user}")
 
 
-    @commands.command(aliases=["p","perms"])
+    @commands.command(aliases=["p","perms"],help="Sends you (in DM if allowed, else in the channel) the permissions a member has in this server.")
     @commands.has_permissions(administrator = True)
     async def permissions(self,ctx,member:discord.Member):
         """Sends you in DM the permissions the member has on the server."""
         embedVar = discord.Embed(title=f"You asked for {member.mention}'s permissions on {ctx.guild}.",color=0xaaaaff)
         embedVar.add_field(name="Here they are : ",value="\n".join(["• {}".format(i[0]) for i in member.guild_permissions if i[1] is True])) #Iterate through the discord.Member permissions on the guild. If they have the permission, this is added to the list.
-        await ctx.author.send(embed=embedVar)
+        try:
+            await ctx.author.send(embed=embedVar)
+        except discord.Forbidden:
+            await ctx.send(embed=embedVar)
 
-    @commands.group(invoke_without_command=True)
+    @commands.group(invoke_without_command=True,help="Warns a user. If they have 5 or more warns, they get automatically kicked (or banned). You can change the limit, and the punishment !")
     @commands.has_permissions(ban_members=True)
     async def warn(self,ctx,member:discord.Member,*,reason=None):
         """
@@ -350,7 +375,7 @@ class Moderation(commands.Cog):
 
         1) It connects to the database and check if the member already has warnings. It also stores the number of warns allowed for the server you're in. Default is 5.
         2) If the member has warnings, we increment the number of warnings they have.
-            - the number of warnings goes above the limit allowed not to be under sanctions : the member gets kicked, their number of warnings get reset.
+            - the number of warnings goes above the limit allowed not to be under sanctions : the member gets kicked, their number of warnings get reset. (default)
             - the number of warnings stay under the limit allowed : we just increment the amount of warnings they have.
         3) If the member has no warnings, we create a new row and add it to the database.
         """
@@ -389,7 +414,7 @@ class Moderation(commands.Cog):
                 await self.bot.db.execute(f"INSERT INTO warns VALUES(?,?,1);",(member.id,ctx.guild.id)) #We create their row
                 await self.bot.db.commit()
     
-    @warn.command()
+    @warn.command(help="Allows you to change the limit of warns required to be under punishments, such as ban or kick.")
     async def changenumber(self,ctx,amount:int):
         """
         This allows you to change the number of warnings required to get kicked from the guild.
@@ -412,9 +437,9 @@ class Moderation(commands.Cog):
                 await self.bot.db.execute(f"UPDATE warns SET nb_warnings = ? WHERE member_id = 0;",(amount,))
                 await self.bot.db.commit()
 
-    @warn.command()
+    @warn.command(help="Allows you to change the punishment that will happen if a member goes above the warn limit.")
     async def changepunishment(self,ctx,new_punishment:str):
-        if new_punishment not in ("kick","ban"):
+        if new_punishment not in {"kick","ban"}:
             return await ctx.send("The punishment must be 'kick' or 'ban'.")
         try:
             await ctx.send("Are you sure you want to change the punishment ?")
@@ -426,6 +451,7 @@ class Moderation(commands.Cog):
             await self.bot.db.commit()
             return await ctx.send(f"New punishment for exceeding number of warns allowed : {new_punishment}.")
 
+    @commands.command(help="Softbans the user. This means they are banned, and immediately unbanned. This is a shorter way than kick + purge message !")
     async def softban(self,ctx,member:discord.Member,*,reason):
         """A softban is a kick that allows you to delete every message the member has sent on your server.
         
@@ -436,13 +462,13 @@ class Moderation(commands.Cog):
         await member.unban(reason=reason)
         await ctx.send(f"{member.mention} was softbanned.")
 
-    @commands.group(invoke_without_command=True)
+    @commands.group(invoke_without_command=True,help="Main command of the ignore channels/members features. Does nothing without those subcommands.")
     async def ignore(self,ctx):
         """This command requires subcommand to work. Nothing much to add to this.."""
         if ctx.invoked_subcommand is None:
             await ctx.send("Use the 'member' or 'channel' subcommand to specify who shouldn't be allowed to use a command, or where people won't be allowed to use those beautiful commands !")
 
-    @ignore.command(name="member")
+    @ignore.command(name="member",help="Allows you to ignore/unignore a member. This means the bot won't/will listen for their commands.")
     async def _m(self,ctx,member:discord.Member=None):
         """Ignore the commands from a member on a specific server. This means that they won't be able to use commands on this server but they will on another.
 
@@ -478,7 +504,7 @@ class Moderation(commands.Cog):
             else:
                 await _ignore_member()
 
-    @ignore.command()
+    @ignore.command(help="Allows you to ignore/unignore a channel. This means the bot won't/will listen for commands in this channel.")
     async def channel(self,ctx,channel:discord.TextChannel=None):
         """
         Ignore the commands from a channel on a server. This means that nobody will be able to use commands in this channel.
@@ -508,7 +534,7 @@ class Moderation(commands.Cog):
             self.ignored_channels.add(channel.id)
             await ctx.send(f"{channel.mention} now has disabled commands !")
 
-    @commands.group(invoke_without_command=True)
+    @commands.group(invoke_without_command=True,aliases=["clear"],help="Deletes the last X messages from the channel.")
     async def purge(self,ctx,Amount:int=2): #Delete "Amount" messages from the current channel. $purge [int]
         """
         Deletes a certain amount of message from the channel the command is used in. This command can have more detailed purge options, with the subcommands.
@@ -520,7 +546,8 @@ class Moderation(commands.Cog):
         if ctx.invoked_subcommand is None:
             purged_messages = await ctx.channel.purge(limit=int(Amount))
             return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
-    @purge.command()
+
+    @purge.command(help="A subcommand of `purge` function. Deletes ONLY commands in the last X messages.")
     async def commands(self,ctx,amount:int=2):
         """
         /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
@@ -532,19 +559,20 @@ class Moderation(commands.Cog):
         - Message's author is a bot OR message starts with a server prefix.
         """
         guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
-        await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot or m.content.startswith(guild_prefix))
- 
-    @purge.command()
+        purged_messages = await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot or m.content.startswith(guild_prefix))
+        return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
+
+    @purge.command(help="Deletes every message from bots in the last X messages.")
     async def bots(selt,ctx,amount:int=2):
         """
         /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
 
         Conditions : the message's author is a bot.
         """
-        await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot)
-        await ctx.message.delete()
+        purged_messages = await ctx.channel.purge(limit=amount,check=lambda m:m.author.bot)
+        return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
     
-    @purge.command()
+    @purge.command(help="Deletes every message that were sent by us, humans, and that don't call a command.")
     async def humans(self,ctx,amount:int=2):
         """
         /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
@@ -552,9 +580,10 @@ class Moderation(commands.Cog):
         Conditions : the message's author is NOT a bot AND the message doesn't call a command.
         """
         guild_prefix = tuple(await get_prefix(self.bot,ctx.message))
-        await ctx.channel.purge(limit=amount,check=lambda m:not (m.author.bot or m.content.startswith(guild_prefix)))
-    
-    @purge.command()
+        purged_messages = await ctx.channel.purge(limit=amount,check=lambda m:not (m.author.bot or m.content.startswith(guild_prefix)))
+        return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
+
+    @purge.command(help="Deletes every message of a member in the last X messages.")
     async def member(self,ctx,amount:int=2,member:discord.Member=None):
         """
         /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
@@ -562,8 +591,8 @@ class Moderation(commands.Cog):
         Conditions : the message's author is NOT a bot.
         """
         member = member or ctx.author
-        await ctx.channel.purge(limit=amount,check=lambda m:m.author == member)
-        await ctx.message.delete()
+        purged_messages = await ctx.channel.purge(limit=amount,check=lambda m:m.author == member)
+        return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
     
     @purge.command()
     async def match(self,ctx,amount:int=2,*,content):
@@ -572,56 +601,60 @@ class Moderation(commands.Cog):
 
         Conditions : [content] is in the message.
         """
-        await ctx.channel.purge(limit=amount,check=lambda m:content in m.content)
-    
-    @purge.command(name="not")
+        purged_messages = await ctx.channel.purge(limit=amount,check=lambda m:content in m.content)
+        return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
+
+    @purge.command(name="not",help="Deletes messages that DON'T contain `content` in it.")
     async def _not(self,ctx,amount:int=2,*,content):
         """
         /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
 
         Conditions : [content] is NOT in the message.
         """
-        await ctx.channel.purge(limit=amount,check=lambda m:not (content in m.content))
-        await ctx.message.delete()
+        purged_messages = await ctx.channel.purge(limit=amount,check=lambda m:not (content in m.content))
+        return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
     
-    @purge.command()
+    @purge.command(help="Pretty clear. Deletes messages that starts with `content`.")
     async def startswith(self,ctx,amount:int=2,*,content):
         """
         /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
 
         Conditions : message starts with [content] .
         """
-        await ctx.channel.purge(limit=amount,check=lambda m:m.content.startswith(content))
-        await ctx.message.delete()
+        purged_messages = await ctx.channel.purge(limit=amount,check=lambda m:m.content.startswith(content))
+        return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
     
-    @purge.command()
+    @purge.command(help="Pretty clear. Deletes messages that ends with `content`.")
     async def endswith(self,ctx,amount:int=2,*,content):
         """
         /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
 
         Conditions : message ends with [content].
         """
-        await ctx.channel.purge(limit=amount,check=lambda m:m.content.endswith(content))
+        purged_messages = await ctx.channel.purge(limit=amount,check=lambda m:m.content.endswith(content))
+        return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
         
-    @purge.command()
+    @purge.command(help="Deletes messages that contains embeds.")
     async def embeds(self,ctx,amount:int=2):
         """
         /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
 
         Conditions : message is an embed.
         """
-        await ctx.channel.purge(limit=amount,check=lambda m:len(m.embeds))
+        purged_messages = await ctx.channel.purge(limit=amount,check=lambda m:len(m.embeds))
         await ctx.message.delete()
+        return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
 
-    @purge.command()
-    async def images(self,ctx,amount:int=2):
+    @purge.command(aliases=["attach"],help="Deletes messages that have an attachment. NOT FULLY ACCURATE.")
+    async def attachments(self,ctx,amount:int=2):
         """
         /!\ This doesn't delete exactly [amount] messages matching the conditions below. This iterates through the last [amount] textchannel's messages and deletes each message that matches the conditions.
         This one is not fully accurate 
         Conditions : message ends with [content].
         """
-        await ctx.channel.purge(limit=amount,check=lambda m:len(m.attachments) or m.content.startswith(("https://cdn.discordapp.com/attachments/","https://tenor.com/view/")))
+        purged_messages = await ctx.channel.purge(limit=amount,check=lambda m:len(m.attachments) or m.content.startswith(("https://cdn.discordapp.com/attachments/","https://tenor.com/view/")))
         await ctx.message.delete()
+        return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
 
 def setup(bot):
     bot.add_cog(Moderation(bot))

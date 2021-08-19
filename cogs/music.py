@@ -59,10 +59,12 @@ class InvalidPlaylistLink(commands.CommandError):
     """A class that represents the fact a playlist share link wasn't the right one. Should look like : https://open.spotify.com/playlist/2Uor0e3UQxqCNRKmYpchpV?si=be08ba908c1744fb"""
 
 class LowerConverter(commands.Converter):
+    """Converts the argument to lower case."""
     async def convert(self, ctx, argument):
         return argument.lower()
 
 class SliceConverter(commands.Converter):
+    """Converts the slice argument into a start,end numbers."""
     async def convert(self, ctx, argument):
         slice_regex = re.compile(r"(\d{1,5}):(\d{1,5})")
         result = slice_regex.findall(argument)
@@ -149,43 +151,85 @@ class CustomQueue(asyncio.Queue):
         return self.qsize()
     
     def clear(self):
+        """Clears the queue.Removes every item inside of it."""
         return self._queue.clear()
     
     def remove(self,index:int):
+        """Removes the `index`th from the queue.
+        
+        #### Parameters :
+        - `index` : an integer, the index of the element to remove.
+        """
         del self._queue[index]
 
     def get_element(self,index:int):
+        """Get an element from the queue, given its index.
+        
+        #### Parameters :
+        - `index` : an integer, the index of the element to return.
+        """
         return self._queue[index]
     
     def insert(self,index:int,source):
+        """Insert an element into the queue, at `index`.
+        
+        #### Parameters :
+        - `index` : an integer, the index of where `song` will be put.
+        - `source` : the element to insert in the queue.
+        """
         self._queue.insert(index,source)
 
     def jump(self,index:int):
+        """'Jumps' across the queue. Basically, every element from range 0 to `index` is removed from the queue.
+        
+        #### Parameters :
+        - `index` : an integer, the index of where the queue will now start.
+
+        Example : 
+
+        `lst` is an instance of this class.
+
+        lst = [1,2,3]
+        
+        lst.jump(2)
+
+        print(lst) #Prints [3]
+        """
         for i in range(index - 1):
             self._queue.popleft()
 
     def shuffle(self):
+        """Shuffles the queue."""
         self._queue = random.sample(self._queue,k=len(self))
     
     def remove_range(self,start,end):
+        """Removes elements from the queue, such as queue[start,end]
+        
+        #### Parameters :
+        - `start` :  an integer, which is the index of the first element to be removed.
+        - `end` : an integer, which is the index of the last element to be removed.
+        """
         for i in range(start,end):
             del self._queue[i]
-
-    def clear(self):
-        self._queue.clear()
     
-    def move(self,song,new_index:int):
-        songs_titles = [song["title"] for song in self._queue]
-        results = process.extract(song,songs_titles,limit=3)
+    def move(self,song:str,new_index:int):
+        """Moves a `song` to a `new_index` in the queue.
+        
+        #### Parameters :
+        - `song` : a string, the title of the song to move to `new_index`.
+        - `new_index` : an integer, the new index of the `song`.
+        """
+        songs_titles = [song["title"] for song in self._queue] #Gets every song title in the queue.
+        results = process.extract(song,songs_titles,limit=3) #Extract best ones
         if not results: #In case nothing matches the song
             return None
         index = 0
         maxi = results[0][1]
-        for i in range(len(results)): #Results = [('choice',ratio_score),('choice2',ratio_score_2), ...]
+        for i in range(len(results)): #Results = [('choice',ratio_score),('choice2',ratio_score_2), ...] NOT ordered by ratio_score
             if results[i][1] > maxi:
                 maxi = results[i][1]
                 index = i
-        song_removed = self._queue[index]
+        song_removed = self._queue[index] #To keep track of which song was removed and insert it at the correct index.
         del self._queue[index]
         self.insert(new_index,song_removed)
         return song_removed["title"]
@@ -200,7 +244,7 @@ class MusicPlayer:
         self._cog = ctx.cog
         self.queue = CustomQueue(0)
         self.run_next = asyncio.Event()
-        self.now_playing = None
+        self.now_playing = None #Now playing message
         self.volume = .5
         self.current = None
         self.previous = None
@@ -211,12 +255,12 @@ class MusicPlayer:
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
             self.run_next.clear()
-            if not self.loop:
+            if not self.loop: #Only if we aren't looping the current song
                 try:
-                    async with timeout(600):
+                    async with timeout(300):
                         source = await self.queue.get()
                         temp = source.copy()
-                except asyncio.TimeoutError:
+                except asyncio.TimeoutError: #Nothing in queue for 5 minutes, bot disconnects
                     await self._destroy(self._guild)
             else:
                 source = self.previous
@@ -249,6 +293,14 @@ class Music(commands.Cog):
         self.bot.loop.create_task(self._cache_playlists())
 
     async def _cache_playlists(self):
+        """Cache playlists informations, in the following structure :
+        
+        `self._playlists` = {guild_id : {playlist_id : {"playlist_name" : value, "songs" : {song_id1 : {"url" : youtube_url,"title" : song title},song_id2:}}}}
+
+        `self._playlists_names` = {guild_id : {playlist1_name : id1,playlist2_name : id2},guild_id2 : { playlist1_name : id1,playlist2_name : id2,...}
+
+        `self._songs` = {song_name : {"url" : youtube url,"id": id},song2_name : {"url",youtube url 2,"id" : id2}}
+        """
         await self.bot.wait_until_ready()
         guilds_ids = [guild.id for guild in self.bot.guilds]
         for guild_id in guilds_ids:
@@ -270,6 +322,14 @@ class Music(commands.Cog):
                     self._songs[song[0]] = {"url":song[1],"id":song[2]}
 
     def _playlist_exists(self,guild_id,playlist_name : LowerConverter,strict=False):
+        """Check if a playlist named `playlist_name` exists.
+        
+        #### Parameters : 
+        - `guild_id` : an integer, which represents a discord.Guild.id.
+        - `playlist_name` : a lowercased (through the `LowerConverter` class) string, which represents the playlist name.
+        - `strict` : a special case parameter. This is used to see if a playlist **exactly named** `playlist_name` already exists. If set to True, and a playlist doesn't exist,
+        this returns None. Default set to False.
+        """
         try:
             playlist_id = self._playlists_names[guild_id][playlist_name]
         except KeyError:
@@ -286,13 +346,17 @@ class Music(commands.Cog):
             return playlist_id
 
     def _song_exists(self,guild_id,playlist_id,song_name: LowerConverter,strict=False):
+        """Check if a song exists in the cache. Done by caching every song title in the database with their ID.
+
+        Strict parameter has the same objective as in `_playlist_exists` method.
+        """
         try:
             song_id = self._songs[song_name]
         except KeyError:
             if strict:
                 return None
-            songs_infos = [i for i in self._playlists[guild_id][playlist_id]["songs"].values()]
-            titles = [i["title"] for i in songs_infos]
+            songs_infos = [i for i in self._playlists[guild_id][playlist_id]["songs"].values()] #Gets songs' urls and titles
+            titles = [i["title"] for i in songs_infos] #only titles
             close_match = process.extractBests(song_name,titles,limit=1,score_cutoff=0.85)
             if len(close_match) == 0:
                 raise SongNotFound(f"No song named `{song_name.capitalize()}` was found.")
@@ -300,7 +364,14 @@ class Music(commands.Cog):
                 song_id = self._songs[close_match[0][0]]["id"]
         return song_id
     
-    def _song_in_playlist(self,guild_id,playlist_id,song_id,strict=False):
+    def _song_in_playlist(self,guild_id,playlist_id,song_id):
+        """Check if the song is in playlist. Done by using IDs only.
+        
+        #### Parameters :
+        - `guild_id` : an integer, which represents a discord.Guild.id.
+        - `playlist_id` : an integer, which represents the ID of a playlist in the database.
+
+        """
         try:
             result = self._playlists[guild_id][playlist_id]["songs"][song_id]
         except KeyError:
@@ -324,51 +395,99 @@ class Music(commands.Cog):
         return l
 
     def _count_songs_from_playlist(self,guild_id,playlist_id):
-        return len(self._playlists[guild_id][playlist_id]["songs"])
+        """Count songs from a playlist, given the `guild_id` and the `playlist_id`.
+        
+        #### Parameters : 
+        - `guild_id` : an integer, which represents a discord.Guild.id
+        - `playlist_id` : an integer, which represents the ID of a playlist in the database.
+        """
+        return len(self._playlists[guild_id][playlist_id]["songs"]) #is a dict
 
     async def _get_playlist_creator_id(self,playlist_id):
+        """Get the playlist's creator id, given `playlist_id`.
+        
+        #### Parameters : 
+        - `playlist_id` : an integer, which represents the ID of a playlist in a database.
+        """
         async with self.bot.db.execute("SELECT creator_id FROM playlists WHERE playlist_id = ?",(playlist_id,)) as cursor:
             result = await cursor.fetchone()
         return result
     
     def _get_last_song_position(self,guild_id,playlist_id):
-       return len(self._playlists[guild_id][playlist_id]["songs"])
+        """Get the last song position, given `guild_id` and `playlist_id`.
+
+        #### Parameters : 
+        - `guild_id` : an integer, which represents a discord.Guild.id
+        - `playlist_id` : an integer, which represents the ID of a playlist in the database.
+        """
+        return len(self._playlists[guild_id][playlist_id]["songs"])
 
     def _get_playlist_name(self,guild_id,playlist_id):
+        """Self explanatory.
+        
+        #### Parameters : 
+        - `guild_id` : an integer, which represents a discord.Guild.id
+        - `playlist_id` : an integer, which represents the ID of a playlist in the database.
+        """
         return self._playlists[guild_id][playlist_id]["playlist_name"]
 
     async def _update_songs_position(self,guild_id,playlist_id):
-        songs_ids = [id for id in self._playlists[guild_id][playlist_id].keys()]
-        c = 0
+        """Updates the songs position in the database, given the `guild_id` and the `playlist_id`.
+        
+        #### Parameters : 
+        - `guild_id` : an integer, which represents a discord.Guild.id
+        - `playlist_id` : an integer, which represents the ID of a playlist in the database.
+        """
+        songs_ids = [id for id in self._playlists[guild_id][playlist_id].keys()] #Gets songs' IDs from cache
+        c = 1 #counter
         for id in songs_ids:
-            await self.bot.db.execute("UPDATE songs_in_playlists SET position = ? WHERE playlist_id = ? AND song_id = ?",(c,playlist_id,id))
+            await self.bot.db.execute("UPDATE songs_in_playlists SET position = ? WHERE playlist_id = ? AND song_id = ?",(c,playlist_id,id)) #Update the songs' positions.
         await self.bot.db.commit()
 
     def _valid_spotify_playlist_url(self,url):
+        """Makes sure the provided spotify playlist URL is a valid one, through regex.
+
+        #### Parameters : 
+        - `url`: a string, supposedly a spotify share link.
+        
+        ### Returns :
+        - The playlist URI, found in the link.
+
+        ### Raises :
+        - InvalidPlaylistLink : a custom error, to show that the playlist share link is invalid.
+        """
         playlist_uri_pattern = re.compile(r"https://open.spotify.com/playlist/(\w{1,30})\?si=\w{1,30}")
         result = playlist_uri_pattern.findall(url)
         if not result :
             raise InvalidPlaylistLink("Playlist URL is invalid. It must looks like : `https://open.spotify.com/playlist/2Uor0e3UQxqCNRKmYpchpV?si=020254f8611b4` (This playlist doesn't exist).")
         return result[0]
 
-    def register_songs(self,songs):
-        songs_list = []
+    def register_songs(self,songs : list):
+        """Extracts data from YTDL, and formats it in a way the bot can easily use.
+        
+        #### Parameters :
+        - `songs` : a list object, where you can find song titles (such as "the witcher 3 blood and wine) or direct YouTube URLs.
+
+        ### Returns :
+        - `songs_infos` : a list filled with dicts, with YouTube URL and title of each entries from `songs`.
+
+        ##### Example :
+        - `songs_infos` = [{'webpage_url': youtube url here,'title' : title here},{'webpage_url': youtube url2 here,'title' : title here2}]
+        """
+        songs_infos = []
         for song in songs:
             data = ytdl.extract_info(url=song,download=False)
-            if 'entries' in data:
+            if 'entries' in data: #In case `song` isn't a youtube url, extract_info returns a dict of possible results.
                 data = data["entries"][0]
-            songs_list.append({'webpage_url': data['webpage_url'],'title': data['title'].lower()})
-        return songs_list
+            songs_infos.append({'webpage_url': data['webpage_url'],'title': data['title'].lower()})
+        return songs_infos
 
-    @commands.command()
-    async def show(self,ctx):
-        print(self._playlists)
-        print("\n")
-        print(self._playlists_names)
-        print("\n")
-        print(self._songs)
-
-    async def cleanup(self,guild):
+    async def cleanup(self,guild:discord.Guild):
+        """Deletes the guild's music player.
+        
+        #### Parameters : 
+        - `guild` : an instance of discord.Guild
+        """
         try:
             await guild.voice_client.disconnect()
         except Exception as e:
@@ -379,6 +498,7 @@ class Music(commands.Cog):
             print(e)
 
     def get_music_player(self,ctx):
+        """Returns the guild's music player, or create one if it doesn't exist."""
         try:
             player = self.players[ctx.guild.id]
         except KeyError:
@@ -388,50 +508,51 @@ class Music(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_remove(self,member):
+        """When a member leaves, the creator id of playlists they created becomes None."""
         await self.bot.db.execute("UPDATE playlists SET creator_id = ? WHERE creator_id = ?",(None,member.id))
         await self.bot.db.commit()
      
-    @commands.command(aliases=["connect"])
+    @commands.command(aliases=["connect"],help="Makes the bot join a specified voice channel or yours (if you're in a voice channel).")
     async def join(self,ctx,*,channel : discord.VoiceChannel=None):
         if channel is None:
             try:
                 channel = ctx.author.voice.channel
-            except AttributeError:
+            except AttributeError: #ctx.author.voice is None if author isn't in a voice channel
                 raise AuthorIsNotInVoiceChannel("Either join a voice channel or specify one !")
-        if ctx.voice_client:
-            if ctx.voice_client.channel.id == channel.id:
-                return await ctx.send(f"Already connected to {ctx.voice_client.channel.mention}")#We are already connected to this voice channel.
+        if ctx.voice_client: #Bot is already connected to a voice channel
+            if ctx.voice_client.channel.id == channel.id: #Wait, the author wants us to join the same voice channel
+                return await ctx.send(f"Already connected to {ctx.voice_client.channel.mention}")
             else:
                 try:
                     await ctx.voice_client.move_to(channel)
-                except asyncio.TimeoutError:
+                except asyncio.TimeoutError: #I don't know wtf gone wrong here.
                     return await ctx.send(f"Connection to {channel.mention} somehow failed.")
                 else:
                     return await ctx.send(f"Now connected to {channel.mention}.",delete_after=10)
-        else:
+        else: #author inputted a valid voice channel
             try:
                 await channel.connect()
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError:#I don't know wtf gone wrong here.
                     return await ctx.send(f"Connection to {channel.mention} somehow failed.")
             else:
                 return await ctx.send(f"Now connected to {channel.mention}.",delete_after=10)
 
     @commands.group(aliases=["sing"])
     async def play(self,ctx,*,song):
-        await ctx.message.edit(suppress=True)
+        await ctx.message.edit(suppress=True) #Avoids integration if user sent a youtube link
         await ctx.trigger_typing()
-        if not ctx.voice_client:
+        if ctx.voice_client is None: #We aren't connected, thus we can't play anything
             await ctx.invoke(self.join)
         try:
-            if ctx.voice_client.channel != ctx.author.voice.channel:
+            if ctx.voice_client.channel != ctx.author.voice.channel: #Makes sure the bot and the user are in the same voice channel
                 raise NotSameVoiceChannel("You must be in my voice channel to add a song to the queue !")
-        except AttributeError: #Author isn't in a voice channel
+        except AttributeError: #Author isn't in a voice channel, because we made sure bot is in one.
             raise AuthorIsNotInVoiceChannel("You're not in a voice channel (and to be even more accurate, the voice channel I'm connected to), so you can't use this command.")
         player = self.get_music_player(ctx)
-        source = await YTDLSource.create_source(ctx,song,loop=self.bot.loop,download=False)
+        source = await YTDLSource.create_source(ctx,song,loop=self.bot.loop,download=False) #Creates the source for the song to be played
         await player.queue.put(source)
     
-    @commands.command(aliases=["playprev"])
+    @commands.command(aliases=["playprev"],help="Plays the previous song AFTER the current one is done. Doesn't play anything if there are no previous song, obviously.")
     async def playprevious(self,ctx):
         player = self.get_music_player(ctx)
         if player.previous is None:
@@ -441,6 +562,7 @@ class Music(commands.Cog):
         return await ctx.send(f"`{title}` will be played again after the current song.")
 
     async def play_playlist(self,ctx,songs_list):
+        """Internal process. Adds the songs to the queue"""
         await ctx.trigger_typing()
         if not ctx.voice_client:
             await ctx.invoke(self.join)
@@ -450,23 +572,23 @@ class Music(commands.Cog):
         except AttributeError: #Author isn't in a voice channel
             raise AuthorIsNotInVoiceChannel("You're not in a voice channel (and to be even more accurate, the voice channel I'm connected to), so you can't use this command.")
         player = self.get_music_player(ctx)
-        for song in songs_list:
+        for song in songs_list: 
             source = await YTDLSource.create_source(ctx,song["url"],loop=self.bot.loop,download=False,playlist=True)
             await player.queue.put(source)
 
-    @commands.command()
+    @commands.command(help="Bot disconnects from voice channel. ")
     async def stop(self,ctx):
         await self.cleanup(ctx.guild)
         return await ctx.send("Disconnected.")
 
-    @commands.command()
+    @commands.command(help="Wait, you really need help for that ? Pauses the current song.")
     async def pause(self,ctx):
         if ctx.voice_client.is_paused():
             return await ctx.send("The song is already paused.")
         ctx.voice_client.pause()
         return await ctx.send(f"Song paused. (requested by {ctx.author.mention})",allowed_mentions=self.bot.no_mentions)
 
-    @commands.command()
+    @commands.command(help="Skips the song, only if the majority of people listening to it wants to. Skips it without a vote if you're alone in the voice channel.")
     async def skip(self,ctx):
         if not ctx.voice_client.is_playing(): #Self explanatory
             return await ctx.send("I'm not playing anything.")
@@ -474,7 +596,7 @@ class Music(commands.Cog):
         if player.queue.empty(): #Nothing to skip if queue is empty
             return await ctx.send("Current queue is empty.")
         voice_client_channel = ctx.voice_client.channel
-        voice_channel_members = [member for member in voice_client_channel.members if not member.bot] #Gets every member in the bot's voice channel
+        voice_channel_members = [member for member in voice_client_channel.members if not member.bot] #Gets every member in the bot's voice channel, that aren't bots.
         if len(voice_channel_members) == 1 and voice_channel_members[0] == ctx.author: #Command's author is alone in the voice chat, no need to do a vote
             ctx.voice_client.stop()
             return await ctx.send("Song skipped.")
@@ -487,31 +609,31 @@ class Music(commands.Cog):
             await poll.add_reaction(i)
         await asyncio.sleep(10) #Wait until the vote ends
         r = discord.utils.get(self.bot.cached_messages,id=poll.id) or await ctx.channel.fetch_message(poll.id) #In case message cannot be found in the bot's cache
-        if r is None: #Vote message not in cache neither could be fetched from the channel (most likely was deleteds)
+        if r is None: #Vote message not in cache neither could be fetched from the channel (most likely was deleted)
             return await ctx.send("An error occured. Please restart the poll. (the vote message was most likely deleted)")
         reactions_count = []
         for reaction in r.reactions:
             try:
-                reactions_count.append((reaction.emoji,len([member for member in await reaction.users().flatten() if not member.bot and member.voice.channel == ctx.voice_client.channel])))
-            except AttributeError: #Member.voice is None, so member.voice.channel raises this error. Means someone who voted wasn't in the voice channel at the time.
+                reactions_count.append((reaction.emoji,len([member for member in await reaction.users().flatten() if not member.bot and member.voice.channel == ctx.voice_client.channel]))) #adds the reaction and the number of people who reacted to it. (BOTS AND MEMBERS NOT IN VC ARE EXCLUDED)
+            except AttributeError: #Member.voice is None, so member.voice.channel raises this error. Means someone who voted wasn't in a voice channel at the time.
                 continue
         maxi = max(reactions_count,key=lambda item:item[1])
         if maxi[1] == 0:
             return await ctx.send("Well, no one voted. What do I do now..")
-        elif maxi[0] == "✅":
+        elif maxi[0] == "✅": #Skipping
             await ctx.send(f"Skipping song ({maxi[1]} votes).")
             ctx.voice_client.stop()
-        else:
+        else: #Not skipping
             return await ctx.send(f"I hate democracy ({maxi[1]} votes).")
 
-    @commands.command()
+    @commands.command(help="Resumes a paused song.")
     async def resume(self,ctx):
         if ctx.voice_client.is_playing():
             return await ctx.send("I'm already playing something !")
         ctx.voice_client.resume()
-        return await ctx.send(f"Song resumed. (requested by {ctx.author.mention})",allowed_mentions=self.bot.no_mentions)
+        return await ctx.send(f"Song resumed. (requested by {ctx.author.mention})",allowed_mentions=self.bot.no_mentions,delete_after=10)
 
-    @commands.group(invoke_without_command=True)
+    @commands.group(invoke_without_command=True,help="Shows the server's songs queue.")
     async def queue(self,ctx):
         if ctx.invoked_subcommand is None:
             try:
@@ -529,7 +651,7 @@ class Music(commands.Cog):
                 em.set_footer(text=f"{queue_size - 10} others songs upcoming !")
             return await ctx.send(embed=em)
 
-    @queue.command()
+    @queue.command(help="Clears the server's songs queue.")
     async def clear(self,ctx):
         player = self.get_music_player(ctx)
         if not len(player.queue):
@@ -537,7 +659,7 @@ class Music(commands.Cog):
         player.queue.clear()
         return await ctx.send("Cleared the queue.")
 
-    @queue.group(aliases=["delete"])
+    @queue.group(aliases=["delete"],help="Removes the songs at the `index` index.",brief="To remove the 2nd song of the queue, you would use `$queue remove 2`.")
     async def remove(self,ctx,index:int):
         if index < 1:
             return await ctx.send("A song index cannot be lower than 1. How could I delete a song that doesn't exist ?")
@@ -548,7 +670,7 @@ class Music(commands.Cog):
         player.queue.remove(index - 1)
         return await ctx.send(f"Removed `{song_removed['title']}` from the queue.")
 
-    @remove.command()
+    @remove.command(help="Removes songs from index `start` to `end` included.",brief="To remove songs from index 2 to 4, you would use `$queue remove range 2:4`.")
     async def range(self,ctx,slice:SliceConverter):
         player = self.get_music_player(ctx)
         l = player.queue
@@ -562,7 +684,7 @@ class Music(commands.Cog):
         player.queue.remove_range(start,end)
         return await ctx.send(f"Removed songs from index {start} to {end} ({end - start + 1} songs).")
 
-    @queue.command()
+    @queue.command(help="Insert a song at the given position in the queue.",brief="To insert a song at index 1 (so the song will be played right after the current one is done), you would use `$queue insert 1 mysong`.")
     async def insert(self,ctx,index:int,*,song):
         await ctx.message.edit(suppress=True)
         player = self.get_music_player(ctx)
@@ -574,7 +696,7 @@ class Music(commands.Cog):
         player.queue.insert(index - 1,source)
         return await ctx.send(f"Inserted `{source['title']}` at index {index} of this queue.")
     
-    @queue.command()
+    @queue.command(help="Basically, the queue makes a jump to the index you want. This means it skips all songs between next song and `index`th song.")
     async def jump(self,ctx,index:int):
         player = self.get_music_player(ctx)
         l = len(player.queue)
@@ -586,15 +708,15 @@ class Music(commands.Cog):
         ctx.voice_client.stop()
         return await ctx.send(f"Jumped to `{player.queue._queue[0]['title']}`")
 
-    @queue.command()
+    @queue.command(help="Shuffles the queue. Unexpected, I know.")
     async def shuffle(self,ctx):
         player = self.get_music_player(ctx)
-        if len(player.queue) == 0:
+        if len(player.queue) == 0: #Can't shuffle an empty queue.
             return await ctx.send("Current queue is empty.")
         player.queue.shuffle()
         return await ctx.send("Shuffled the queue !")
 
-    @queue.command()
+    @queue.command(help="Moves the song to a new index in the queue.",brief="`$queue move 3 mysongnameherewhichisdope` would move 'mysongnameherewhichisdope' to index 3.")
     async def move(self,ctx,new_index:int,*,title):
         player = self.get_music_player(ctx)
         l = len(player.queue)
@@ -609,7 +731,7 @@ class Music(commands.Cog):
             return await ctx.send(f"No song named `{title}` was found.")
         return await ctx.send(f"Succesfully moved `{song_moved}` to index {new_index}.")
 
-    @queue.command()
+    @queue.command(help="Loops the currently playing song.",brief="Do you really need an example on how to type `$queue loop` ?")
     async def loop(self,ctx):
         player = self.get_music_player(ctx)
         if not ctx.voice_client.is_playing():
@@ -619,7 +741,7 @@ class Music(commands.Cog):
             return await ctx.send("Looping the current song.")
         return await ctx.send("Removing the loop on the current song.")
 
-    @commands.command()
+    @commands.command(help="Allows you to change the volume of the music the bot is playing. Accepts value between 0 and 100, default is 50.",brief="`$volume 30` sets the volume to 30%.Pure magic.")
     async def volume(self,ctx,vol:int):
         if not ctx.voice_client.is_playing():
             return await ctx.send("I'm not playing anything.")
@@ -631,11 +753,11 @@ class Music(commands.Cog):
         player.volume = vol/100
         return await ctx.send(f"Volume set to {vol}.")
 
-    @commands.command()
+    @commands.command(help="Shows the playlists available on this server. To know more about each of them, use `$playlist info [aplaylistname]`.",brief="Tell me you don't need help for that. Please.")
     async def playlists(self,ctx):
         playlists_list = []
         em = discord.Embed(title=f"{ctx.guild}'s playlists !",color=discord.Colour.blurple())
-        playlists_ids = [playlist_id for playlist_id in self._playlists[ctx.guild.id].keys()]
+        playlists_ids = [playlist_id for playlist_id in self._playlists[ctx.guild.id].keys()] #see how self._playlists is structured to understand faster
         for id in playlists_ids:
             number_of_songs = self._count_songs_from_playlist(ctx.guild.id,id)
             playlist_name = self._get_playlist_name(ctx.guild.id,id)
@@ -647,10 +769,10 @@ class Music(commands.Cog):
             em.description = "\n".join(playlists_list)
             return await ctx.send(embed=em)
         else:
-            menu = menus.MenuPages(PlaylistsDisplayer(playlists_list,per_page=10))
+            menu = menus.MenuPages(PlaylistsDisplayer(playlists_list,per_page=10)) #Menus in case we have >= 10 playlists
             return await menu.start(ctx)
 
-    @commands.group(invoke_without_command=True)
+    @commands.group(invoke_without_command=True,help="Starts to play a playlist. (if the playlist does exist)",brief="`$playlist myplaylistnameheredopeaf` will play the playlist named `myplaylistnameheredopeaf`")
     async def playlist(self,ctx,*,playlist_name):
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         playlist_songs = [i for i in self._playlists[ctx.guild.id][playlist_exists]["songs"].values()]
@@ -658,7 +780,8 @@ class Music(commands.Cog):
         await self.play_playlist(ctx,playlist_songs)
         await ctx.send(f"Let's go ! I will play the songs of `{actual_playlist_name}` playlist.")
 
-    @playlist.command(aliases=['new'])
+    @playlist.command(aliases=['new'],help="Allows you to create a new playlist. /!\ Playlist name and songs titles MUST be quoted if they have more than a single word.",
+    brief="`$playlist create 'dope playlist' 'nice song' 'very good song' 'great song'` will create a playlist named `dope playlist` with the songs in.")
     async def create(self,ctx,*args):
         await ctx.message.edit(suppress=True)
         if len(args) == 0:
@@ -692,7 +815,8 @@ class Music(commands.Cog):
             await self.bot.db.commit()
         return await ctx.send((f"Successfully created playlist `{args[0]}`." if len(args) == 1 else f"Successfully created playlist `{args[0]}`. ({len(songs_list)} songs)"))
 
-    @playlist.command(aliases=["remove"])
+    @playlist.command(aliases=["remove"],help="Lets you delete a playlist. You must either have 'manage server' permissions or be the creator of this playlist.",
+    brief="`$playlist delete playlistnamehere` will delete the playlist named `playlistnamehere`.")
     async def delete(self,ctx,*,playlist_name):
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         creator_id = await self._get_playlist_creator_id(playlist_exists)
@@ -715,7 +839,8 @@ class Music(commands.Cog):
             else:
                 return await ctx.send("Aborting process.")
 
-    @playlist.command()
+    @playlist.command(help="Lets you edit the name of a playlist.\n /!\ Old playlist name must be quoted if it isn't a single word.",
+    brief="`$playlist edit 'trash playlist' my new great playlist` \nThis changes the name of the playlist to `my new great playlist`.")
     async def edit(self,ctx,playlist_name,*,new_playlist_name):
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         actual_playlist_name = self._playlists[ctx.guild.id][playlist_exists]["playlist_name"]
@@ -729,7 +854,8 @@ class Music(commands.Cog):
         self._playlists_name[playlist_exists] = new_playlist_name
         return await ctx.send(f"Playlist name changed : `{actual_playlist_name}` -> `{new_playlist_name}`.")
 
-    @playlist.command(aliases=["infos"])
+    @playlist.command(aliases=["infos"],help="Gives you informations about the desired playlist, such as the songs that are in the playlist, the creator of this playlist and when it was created.",
+    brief="`$playlist info my favourite playlist`")
     async def info(self,ctx,*,playlist_name):
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         actual_playlist_name = self._playlists[ctx.guild.id][playlist_exists]["playlist_name"]
@@ -752,7 +878,8 @@ class Music(commands.Cog):
         menu = menus.MenuPages(PlaylistInfosDisplayer(playlist_songs,per_page=10,tp=timestamp,author=creator,title=actual_playlist_name))
         return await menu.start(ctx)
     
-    @playlist.command(aliases=["addsong"])
+    @playlist.command(aliases=["addsong"],help="Lets you add song(s) to a playlist.\n /!\ Playlist name AND songs titles MUST be quoted if they aren't a single word.",
+    brief="`$playlist addsongs 'my favorite playlist' 'the witcher 3 on the champs désolés' 'radioactive imagine dragons'`")
     async def addsongs(self,ctx,playlist_name,*songs):
         await ctx.message.edit(suppress=True)
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
@@ -776,7 +903,8 @@ class Music(commands.Cog):
         await self.bot.db.commit()
         return await ctx.send((f"Successfully added the songs. (`{playlist_name}` playlist)" if len(song) > 1 else f"Successfully added the song (`{playlist_name}` playlist)"))
 
-    @playlist.command(aliases=["removesong"])
+    @playlist.command(aliases=["removesong"],help="Lets you delete a song from a playlist.\n /!\ Playlist name must be quoted if it isn't a single word.",
+    brief="$playlist delsong 'new favorite playlist' trash song")
     async def delsong(self,ctx,playlist_name,*,song_name):
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         song_exists = self._song_exists(ctx.guild.id,playlist_exists,song_name)
@@ -797,24 +925,26 @@ class Music(commands.Cog):
             else:
                 return await ctx.send("Well, now I'm not doing it.")
 
-    @playlist.command(aliases=["removefrom"])
-    async def delfrom(self,ctx,playlist_name,n:int):
-        if n < 0:
+    @playlist.command(aliases=["removefrom"],help="Deletes every song from `index` position to the end of the playlist.\n /!\ Playlist name must be quoted if it isn't a single word.",
+    brief="`$playlist delfrom 'my best playlist' 3` will delete every song that comes after the third song of the playlist.")
+    async def delfrom(self,ctx,playlist_name,index:int):
+        if index < 0:
             return await ctx.send("... I can't process negative numbers here.")
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
         number_of_songs = self._count_songs_from_playlist(ctx.guild.id,playlist_exists)
-        if n > number_of_songs:
-            return await ctx.send(f"Wait. You want to delete songs that comes after the first {n} songs, but the playlist only contains {number_of_songs} songs.")
-        await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position >= ?",(n,))
+        if index > number_of_songs:
+            return await ctx.send(f"Wait. You want to delete songs that comes after the first {index} songs, but the playlist only contains {number_of_songs} songs.")
+        await self.bot.db.execute("DELETE FROM songs_in_playlists WHERE position >= ?",(index,))
         await self.bot.db.commit()
         songs = [i for i in self._playlists[ctx.guild.id][playlist_exists]["songs"].items()]
-        for i in range(n-1,len(songs)):
+        for i in range(index-1,len(songs)):
             song_id = songs[i][0]
             del self._playlists[ctx.guild.id][playlist_exists]["songs"][song_id]
         await self._update_songs_position(ctx.guild.id,playlist_exists)
-        return await ctx.send(f"Successfully removed every last {number_of_songs - n} songs.")
+        return await ctx.send(f"Successfully removed every last {number_of_songs - index} songs.")
     
-    @playlist.command(aliases=["removeto"])
+    @playlist.command(aliases=["removeto"],help="Deletes every song from start to `index` position of the playlist.\n /!\ Playlist name must be quoted if it isn't a single word.",
+    brief="`$playlist delto 'my best playlist' 3` will delete every song that is before the third song of the playlist.")
     async def delto(self,ctx,playlist_name,n:int):
         if n < 0:
             return await ctx.send("... I can't process negative numbers here.")
@@ -838,7 +968,8 @@ class Music(commands.Cog):
             await self._update_songs_position(ctx.guild.id,playlist_exists)
             return await ctx.send(f"Successfully removed first {number_of_songs - n} songs.")
     
-    @playlist.command(aliases=["removefromto"])
+    @playlist.command(aliases=["removefromto"],help="This is a mix of delfrom and delto. Lets you remove every song between two indexes !\n /!\ Playlist name must be quoted if it isn't a single word.",
+    brief="`$playlist delfromto 'my greatest playlist' 2:4` will remove the 2nd,3rd and 4th songs from the playlist.")
     async def delfromto(self,ctx,playlist_name,slice:SliceConverter):
         start,end = slice
         playlist_exists = self._playlist_exists(ctx.guild.id,playlist_name)
@@ -863,7 +994,8 @@ class Music(commands.Cog):
             await self._update_songs_position(ctx.guild.id,playlist_exists)
             return await ctx.send(f"Deleted {end - start + 1} (index {start} to {end}).")
 
-    @commands.group(invoke_without_command=True)
+    @commands.group(invoke_without_command=True,help="Lets you play a playlist that you have on Spotify. The playlist MUST be public or collaborative. It may take time if the playlist is very big.",
+    brief="`$spotify spotifyplaylistsharelinkhere` will play the desired Spotify playlist !")
     async def spotify(self,ctx,url):
         await ctx.message.edit(suppress=True)
         await ctx.trigger_typing()
@@ -872,7 +1004,7 @@ class Music(commands.Cog):
         auth = asyncspotify.ClientCredentialsFlow(SPOTIFY_CLIENT_ID,SPOTIFY_CLIENT_SECRET)
         async with asyncspotify.Client(auth) as sp:
             try:
-                playlist = await sp.get_playlist(playlist_uri)
+                playlist = await self.bot.sp.get_playlist(playlist_uri)
             except asyncspotify.NotFound:
                 return await ctx.send("Playlist not found. Make sure it is public/collaborative, and double check the shareable link !")
             else:
@@ -881,7 +1013,8 @@ class Music(commands.Cog):
         await ctx.send("I'm getting the tracks in the playlist from Spotify, wait !")
         return await self.play_playlist(ctx,playlist_songs)
     
-    @spotify.command(aliases=["savep"])
+    @spotify.command(aliases=["savep","sp"],help="Lets you save a Spotify playlist.The playlist MUST be public or collaborative.It may take time if the playlist is very big.",
+    brief="`$spotify saveplaylist spotifyplaylistsharelinkhere` will save the playlist to your server (available later as a normal bot playlist).")
     async def saveplaylist(self,ctx,url):
         await ctx.trigger_typing()
         playlist_uri = self._valid_spotify_playlist_url(url)

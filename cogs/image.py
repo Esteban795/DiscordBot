@@ -12,6 +12,7 @@ class ImageProcessing(commands.Cog):
         self.bot = bot
 
     def _swap1(self,args):
+        """Swap colors"""
         img = Image.open(args[0])
         for i in range(img.width):
             for j in range(img.height):
@@ -20,6 +21,7 @@ class ImageProcessing(commands.Cog):
         return img
         
     def _swap2(self,args):
+        """Swap colors"""
         img = Image.open(args[0])
         for i in range(img.width):
             for j in range(img.height):
@@ -28,6 +30,7 @@ class ImageProcessing(commands.Cog):
         return img
 
     def _swap3(self,args):
+        """Swap colors"""
         img = Image.open(args[0])
         for i in range(img.width):
             for j in range(img.height):
@@ -36,6 +39,7 @@ class ImageProcessing(commands.Cog):
         return img
 
     def _swap4(self,args):
+        """Swap colors"""
         img = Image.open(args[0])
         for i in range(img.width):
             for j in range(img.height):
@@ -44,6 +48,7 @@ class ImageProcessing(commands.Cog):
         return img
 
     def _swap5(self,args):
+        """Swap colors"""
         img = Image.open(args[0])
         for i in range(img.width):
             for j in range(img.height):
@@ -52,6 +57,7 @@ class ImageProcessing(commands.Cog):
         return img
 
     def _whiteblack(self,args):
+        """Transforms an image to w&b"""
         img = Image.open(args[0])
         for i in range(img.width):
             for j in range(img.height):
@@ -65,6 +71,7 @@ class ImageProcessing(commands.Cog):
         return img
 
     def _sepia(self,args):
+        """Sepia filter"""
         img = Image.open(args[0])
         for i in range(img.width):
             for j in range(img.height):
@@ -132,11 +139,12 @@ class ImageProcessing(commands.Cog):
         return img
 
     def _crop_ellipse(self,args):
+        """Crop an image as an ellipse, transparent background."""
         coord_x1,coord_y1,coord_x2,coord_y2,img = args
-        img_rgba = Image.open(img).convert("RGBA")
+        img_rgba = Image.open(img).convert("RGBA") #RGBA converted image.
         alpha_background = Image.new("L",img_rgba.size,color=0)
         draw = ImageDraw.Draw(alpha_background)
-        draw.ellipse((coord_x1,coord_y1,coord_x2,coord_y2), fill=255)
+        draw.ellipse((coord_x1,coord_y1,coord_x2,coord_y2), fill=255) #Draw an ellipse on an alpha background.
         img_rgba.putalpha(alpha_background)
         im_rgba_crop = img_rgba.crop((coord_x1,coord_y1,coord_x2,coord_y2))
         return im_rgba_crop
@@ -145,10 +153,10 @@ class ImageProcessing(commands.Cog):
         coord_x1,coord_y1,coord_x2,coord_y2,img = args
         image = Image.open(img).convert("RGBA")
         res = image.crop((coord_x1,coord_y1,coord_x2,coord_y2))
-        byte_io = io.BytesIO()
         return res
 
     def _paste(self,args):
+        """Paste an image onto another image"""
         coord_x,coord_y,img1,img2 = args
         image1 = Image.open(img1).convert("RGBA")
         image2 = Image.open(img2).convert("RGBA")
@@ -156,6 +164,7 @@ class ImageProcessing(commands.Cog):
         return image1
 
     def _blend(self,args):
+        """Blends 2 images together."""
         def change_image_size(max_width, max_height, image):
             width_ratio  = max_width / image.size[0]
             height_ratio = max_height / image.size[1]
@@ -163,14 +172,11 @@ class ImageProcessing(commands.Cog):
             newHeight   = int(height_ratio * image.size[1])
             newImage    = image.resize((newWidth, newHeight))
             return newImage
-
         transparency = args[0]
         img1 = args[1]
         img2 = args[2]
-
         image1 = change_image_size(1920,1080,Image.open(img1)).convert("RGBA")  
         image2 = change_image_size(1920,1080,Image.open(img2)).convert("RGBA")
-
         alpha_blended = Image.blend(image1,image2,transparency) 
         return alpha_blended
 
@@ -191,33 +197,36 @@ class ImageProcessing(commands.Cog):
         new_image = image.rotate(angle,expand=True,fillcolor=(0,0,0,0))
         return new_image
 
-    async def save_img(self,msg:discord.Message,n:int=1):
-        discord_img_regex = re.compile(r"((?:https?:\/\/)?(?:media|cdn)\.discord(?:app)?\.(?:com|net)\/attachments\/(?:[0-9]+)\/(?:[0-9]+)\/(?:[\S]+)\.(?:png|jpg|jpeg|gif))")
-        result = discord_img_regex.findall(msg.content)
+    async def _save_img(self,msg:discord.Message,n:int=1):
+        """Internal process.
+        Saves n img in a list, then returns the list.
+        """
+        discord_img_regex = re.compile(r"((?:https?:\/\/)?(?:media|cdn)\.discord(?:app)?\.(?:com|net)\/attachments\/(?:[0-9]+)\/(?:[0-9]+)\/(?:[\S]+)\.(?:png|jpg|jpeg|gif))") #Discord image share link are structured like this
+        result = discord_img_regex.findall(msg.content) #every link in the message
         l = []
         for i in range(n):
-            if result:
+            if result: #Link found in the message content
                 url = result.pop(0)
             elif len(msg.attachments) and "image" in msg.attachments[0].content_type:
-                url = msg.attachments.pop(0).url
+                url = msg.attachments.pop(0).url #Pops one attachment from the message.attachments.
             else:
-                return
-            async with self.bot.cs.get(url) as image:
-                buffer = io.BytesIO(await image.read())
+                return #Nothing was found
+            async with self.bot.cs.get(url) as image: 
+                buffer = io.BytesIO(await image.read()) #reads the image and save it in a buffer
                 buffer.seek(0)
-            l.append(buffer)
+            l.append(buffer) #appends buffer to a list
         return l
 
     async def run_image_processing(self,ctx,func,*args):
-        t = functools.partial(func,args)
+        t = functools.partial(func,args) #Func is the function that needs to run
         m = await self.bot.loop.run_in_executor(None,t)
         bytes_io = io.BytesIO()
-        m.save(bytes_io,"PNG",quality=95)
+        m.save(bytes_io,"PNG",quality=95) #Every sync internal above functions returns a pil.Image object, so we save it.
         bytes_io.seek(0)
         f = discord.File(fp=bytes_io,filename="test.png")
-        try:
+        try: 
             await ctx.send(content=f"Alright, {ctx.author.mention}, I'm done !",file=f)
-        except discord.HTTPException as e:
+        except discord.HTTPException: #File is too large, >8mb.
             await ctx.send("File too large. I can't send this.")
         f.close()
         return
@@ -225,7 +234,7 @@ class ImageProcessing(commands.Cog):
     @commands.command()
     async def resize(self,ctx,width:int,url:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
             return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._resize,width,img)
@@ -234,7 +243,7 @@ class ImageProcessing(commands.Cog):
     @commands.command()
     async def rotate(self,ctx,angle:int,url:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
             return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._rotate,angle,img)
@@ -243,7 +252,7 @@ class ImageProcessing(commands.Cog):
     @commands.command()
     async def blend(self,ctx,transparency:float,img1=None,img2=None):
         try:
-            img1,img2 = await self.save_img(ctx.message,2)
+            img1,img2 = await self._save_img(ctx.message,2)
         except TypeError:
             return await ctx.send("I need exactly two images to perform this command. Please, provide them. (upload one and give the discord image link for the other, or 2 discord image links).")
         f = await self.run_image_processing(ctx,self._blend,transparency,img1,img2)
@@ -254,7 +263,7 @@ class ImageProcessing(commands.Cog):
         if coord_x < 0 or coord_y < 0:
             return await ctx.send("X and Y offset must be positive integers.")
         try:
-            img1,img2 = await self.save_img(ctx.message,2)
+            img1,img2 = await self._save_img(ctx.message,2)
         except TypeError:
             return await ctx.send("I need exactly two images to perform this command. Please, provide them. (upload one and give the discord image link for the other, or 2 discord image links).")
         f = await self.run_image_processing(ctx,self._paste,coord_x,coord_y,img1,img2)
@@ -267,7 +276,7 @@ class ImageProcessing(commands.Cog):
                 if i < 0:
                     return await ctx.send("Only POSITIVES INTEGERS are allowed for this command.")
             try:
-                img, = await self.save_img(ctx.message)
+                img, = await self._save_img(ctx.message)
             except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
             f = await self.run_image_processing(ctx,self._crop,coord_x1,coord_y1,coord_x2,coord_y2,img)
@@ -279,7 +288,7 @@ class ImageProcessing(commands.Cog):
             if i < 0:
                 return await ctx.send("Only POSITIVES INTEGERS are allowed for this command.")
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._crop_ellipse,coord_x1,coord_y1,coord_x2,coord_y2,img)
@@ -288,7 +297,7 @@ class ImageProcessing(commands.Cog):
     @commands.command()
     async def topng(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._topng,img)
@@ -302,7 +311,7 @@ class ImageProcessing(commands.Cog):
     @filter.command()
     async def grayscale(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._grayscale,img)
@@ -311,7 +320,7 @@ class ImageProcessing(commands.Cog):
     @filter.command()
     async def invert(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._invert,img)
@@ -320,7 +329,7 @@ class ImageProcessing(commands.Cog):
     @filter.command()
     async def mirror(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._mirror,img)
@@ -331,7 +340,7 @@ class ImageProcessing(commands.Cog):
         if number > 8 or number < 1:
             return await ctx.send("I need a number between 1 and 8 !")
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._posterize,number,img)
@@ -342,7 +351,7 @@ class ImageProcessing(commands.Cog):
         if not (0 < number < 256):
             return await ctx.send("I need a number between 0 and 256 !")
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._solarize,number,img)
@@ -351,7 +360,7 @@ class ImageProcessing(commands.Cog):
     @filter.command()
     async def sepia(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._sepia,img)
@@ -360,7 +369,7 @@ class ImageProcessing(commands.Cog):
     @filter.command(aliases=["wb"])
     async def whiteblack(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._whiteblack,img)
@@ -369,7 +378,7 @@ class ImageProcessing(commands.Cog):
     @filter.command()
     async def swap1(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._swap1,img)
@@ -378,7 +387,7 @@ class ImageProcessing(commands.Cog):
     @filter.command()
     async def swap2(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._swap2,img)
@@ -387,7 +396,7 @@ class ImageProcessing(commands.Cog):
     @filter.command()
     async def swap3(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._swap3,img)
@@ -396,7 +405,7 @@ class ImageProcessing(commands.Cog):
     @filter.command()
     async def swap4(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._swap4,img)
@@ -405,7 +414,7 @@ class ImageProcessing(commands.Cog):
     @filter.command()
     async def swap5(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._swap5,img)
@@ -414,7 +423,7 @@ class ImageProcessing(commands.Cog):
     @filter.command()
     async def thumbnail(self,ctx,img:str=None):
         try:
-            img, = await self.save_img(ctx.message)
+            img, = await self._save_img(ctx.message)
         except TypeError:
                 return await ctx.send("I need exactly one image to perform this command. Please, provide it. (upload one or give the discord image link).")
         f = await self.run_image_processing(ctx,self._thumbnail,img)

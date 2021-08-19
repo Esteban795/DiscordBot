@@ -8,33 +8,38 @@ class Poll(commands.Cog):
         self.bot = bot
         self.emote_alphabet = ["\U0001F1E6","\U0001F1E7","\U0001F1E8","\U0001F1E9","\U0001F1EA","\U0001F1EB","\U0001F1EC","\U0001F1ED","\U0001F1EE","\U0001F1EF","\U0001F1F0","\U0001F1F1","\U0001F1F2","\U0001F1F3","\U0001F1F4",
     "\U0001F1F5","\U0001F1F6","\U0001F1F7","\U0001F1F8","\U0001F1F9"]
-        self.timedpoll_loop.start()
+        self._timedpoll_loop.start()
 
     async def _create_poll_ended_embed(self,original_message,question,propositions)->discord.Embed:
+        """Internal method to create a generic poll embed."""
         reactions_count = sorted([(original_message.reactions[i].count,i) for i in range(len(propositions))],key=lambda x:x[0],reverse=True)
         winner = reactions_count[0]
         embed = discord.Embed(title=f"Poll '{question.capitalize()}' just ended !",color=0xaaffaa,timestamp=datetime.datetime.utcnow(),description=f"Proposition '{propositions[winner[1]]}' won with {winner[0] - 1} votes !")
         return embed
 
+    async def _timedpoll_task(self,args):
+        channel_id,message_id,question,propositions = args
+        channel = self.bot.get_channel(channel_id)
+        try:
+            original_message = await channel.fetch_message(message_id)
+        except discord.NotFound:
+            await channel.send("Original poll message couldn't be found. Can't select the proposition who won !")
+        else:
+            em = await self._create_poll_ended_embed(original_message,question,propositions.split("\n"))
+            await channel.send(embed=em)
+            await self.bot.db.execute("DELETE FROM temppoll WHERE message_id = ?",(message_id,))
+            await self.bot.db.commit()
+
     @tasks.loop(minutes=1)
-    async def timedpoll_loop(self):
+    async def _timedpoll_loop(self):
+        """A loop that checks """
         await self.bot.wait_until_ready()
         async with self.bot.db.execute("SELECT channel_id,message_id,question,propositions FROM temppoll WHERE end_time <=  ?",(datetime.datetime.utcnow(),)) as cursor:
             async for row in cursor:
-                channel_id,message_id,question,propositions = row
-                channel = self.bot.get_channel(channel_id)
-                try:
-                    original_message = await channel.fetch_message(message_id)
-                except discord.NotFound:
-                    await channel.send("Original poll message couldn't be found. Can't select the proposition who won !")
-                else:
-                    em = await self._create_poll_ended_embed(original_message,question,propositions.split("\n"))
-                    await channel.send(embed=em)
-                    await self.bot.db.execute("DELETE FROM temppoll WHERE message_id = ?",(message_id,))
-                    await self.bot.db.commit()
+                await self._timedpoll_task(row)
 
-
-    @commands.command(aliases=["study"],help="test")
+    @commands.command(aliases=["study"],help="Lets you create a poll. Keep two things in mind : every argument must be quoted if they aren't a single word, and the first argument will be the title of the poll.",
+    brief="`$poll 'Apple or banana' 'Apple' 'Banana'` creates a poll with two choices : Apple and Banana.")
     async def poll(self,ctx,*args):
         if len(args) > 1:
             question = args[0].capitalize()
@@ -50,7 +55,8 @@ class Poll(commands.Cog):
         else:
             return await ctx.send("I need at least the topic of the poll and an option. Please provide them both.")
     
-    @commands.command()
+    @commands.command(aliases=["tpoll"],help="Lets you create a poll that actually has a time limit. Keep two things in mind : every argument must be quoted if they aren't a single word, and the first argument will be the title of the poll.",
+    brief="`$poll 'Apple or banana' 'Apple' 'Banana'` creates a poll with two choices : Apple and Banana.")
     async def timedpoll(self,ctx,time:TimeConverter,question,*args):
         if len(args) > 0:
             try:
