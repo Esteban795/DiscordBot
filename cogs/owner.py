@@ -11,7 +11,7 @@ class OwnerOnly(commands.Cog):
         return True
         
     @commands.command()
-    async def spam(ctx,member:discord.Member=None):
+    async def spam(self,ctx,member:discord.Member=None):
         member = member or ctx.author
         for i in range(50):
             await ctx.send(member.mention)

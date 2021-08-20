@@ -210,17 +210,6 @@ async def on_ready():
 async def echo(ctx,*,args):
     await ctx.send(args)
 
-@bot.event
-async def on_voice_state_update(member,before,after):
-    print(member)
-    print(before)
-    print(after)
-    voice_client = member.guild.voice_client
-    if member.id == 475332124711321611:
-        await member.move_to(None)
-    print(voice_client)
-
-
 initial_extensions = ["cogs.eh","cogs.giveaway","cogs.translate","cogs.remind","cogs.xp","cogs.music","cogs.tags","cogs.poll","cogs.logs","cogs.owner","cogs.prefix","cogs.com","cogs.mod","cogs.chucknorris","cogs.reddit","cogs.python","cogs.image","cogs.gh"]
 
 for i in initial_extensions:
