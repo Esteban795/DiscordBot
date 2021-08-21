@@ -11,12 +11,12 @@ class Reddit(commands.Cog):
         "controversial":"https://www.reddit.com/r/{}/controversial.json?limit=1",
         "top":"https://www.reddit.com/r/{}/top.json?limit=1"} #Will be used to get URL for each command
 
-    async def reddit_request(self,ctx:commands.Context,url:str,subreddit:str):
+    async def _reddit_request(self,ctx:commands.Context,url:str,subreddit:str):
         """
         Make a request to reddit API.
 
         ### Parameters :
-        - ctx : Required in case subreddit doesn't exist to alert the channel the bot couldn't find what they are looking for. Will be passed in the self.create_reddit_embed method to allow sending the rich embed.
+        - ctx : Required in case subreddit doesn't exist to alert the channel the bot couldn't find what they are looking for. Will be passed in the self._create_reddit_embed method to allow sending the rich embed.
         - url : a URL that comes from self.post_type dict. This URL will be used to make the API request.
         - subreddit : the subreddit's name. Examples : meme,france etc.
 
@@ -36,9 +36,9 @@ class Reddit(commands.Cog):
             if not res["data"]["dist"] or res.get("error"):
                 return await ctx.send("Couldn't find any posts on this subreddit. Try a valid name !")
             post_data = res["data"]["children"][0]["data"]
-        return await self.create_reddit_embed(ctx,post_data)
+        return await self._create_reddit_embed(ctx,post_data)
 
-    async def create_reddit_embed(self,ctx,data:dict):
+    async def _create_reddit_embed(self,ctx,data:dict):
         """
         ### Parameters : 
         - data, a dict with Reddit API informations
@@ -82,7 +82,7 @@ class Reddit(commands.Cog):
         """
         if ctx.invoked_subcommand is None:
             url = self.post_type[ctx.invoked_with] #Get the right URL according to the command used
-            await self.reddit_request(ctx,url,subreddit) #API request
+            await self._reddit_request(ctx,url,subreddit) #API request
 
     @reddit.command()
     async def rising(self,ctx,subreddit:str="meme"):
@@ -90,7 +90,7 @@ class Reddit(commands.Cog):
         Works the same as reddit command. The difference is that it gets rising posts from the subreddit, not random one.
         """
         url = self.post_type[ctx.invoked_with] #Get the URL we're gonna use
-        await self.reddit_request(ctx,url,subreddit) #API request
+        await self._reddit_request(ctx,url,subreddit) #API request
     
     @reddit.command()
     async def new(self,ctx,subreddit:str="meme"):
@@ -98,7 +98,7 @@ class Reddit(commands.Cog):
         Works the same as reddit command. The difference is that it gets new posts from the subreddit, not random one.
         """
         url = self.post_type[ctx.invoked_with]
-        await self.reddit_request(ctx,url,subreddit) #API request
+        await self._reddit_request(ctx,url,subreddit) #API request
     
     @reddit.command()
     async def controversial(self,ctx,subreddit:str="meme"):
@@ -106,7 +106,7 @@ class Reddit(commands.Cog):
         Works the same as reddit command. The difference is that it gets controversial posts from the subreddit, not random one.
         """
         url = self.post_type[ctx.invoked_with]
-        await self.reddit_request(ctx,url,subreddit) #API request
+        await self._reddit_request(ctx,url,subreddit) #API request
 
     @reddit.command()
     async def top(self,ctx,subreddit:str="meme"):
@@ -114,7 +114,7 @@ class Reddit(commands.Cog):
         Works the same as reddit command. The difference is that it gets top post from the subreddit, not random one.
         """
         url = self.post_type[ctx.invoked_with]
-        await self.reddit_request(ctx,url,subreddit) #API request
+        await self._reddit_request(ctx,url,subreddit) #API request
     
     @reddit.command()
     async def display(self,ctx,url:str):
@@ -124,7 +124,7 @@ class Reddit(commands.Cog):
         subreddit = regex_subreddit.findall(url)
         if not subreddit:
             return await ctx.send(f"Invalid link {ctx.author.mention}. Please provide a correct one !")
-        await self.reddit_request(ctx,url+".json",subreddit)
+        await self._reddit_request(ctx,url+".json",subreddit)
 
 def setup(bot):
     bot.add_cog(Reddit(bot))

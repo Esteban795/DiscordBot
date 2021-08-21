@@ -69,7 +69,7 @@ class SliceConverter(commands.Converter):
         slice_regex = re.compile(r"(\d{1,5}):(\d{1,5})")
         result = slice_regex.findall(argument)
         if not result:
-            raise InvalidSlice(f"`{argument}`` is not a valid slice. A slice must be of the form a:b, with a <= b. (a and b are numbers)")
+            raise InvalidSlice(f"`{argument}`` is not a valid slice. A slice must be of the form a:b, with a <= b. (a and b are positive numbers)")
         start,end = [int(i) for i in result[0]]
         if end < start:
             raise InvalidSlice(f"`{argument}` is not a valid slice, because the end is lower than the start.")

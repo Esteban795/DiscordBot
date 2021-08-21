@@ -3,7 +3,7 @@ from discord.ext import commands
 from difflib import get_close_matches
 from cogs.music import *
 from cogs.giveaway import *
-import sys
+from cogs.logs import *
 
 class ErrorHandler(commands.Cog):
     def __init__(self,bot):
@@ -59,6 +59,10 @@ class ErrorHandler(commands.Cog):
             await ctx.send(error)
         elif isinstance(error,InvalidPlaylistLink):
             await ctx.send(error)
+        elif isinstance(error,IgnoredLogChannelNotFound):
+            pass
+        elif isinstance(error,LogChannelNotFound):
+            return await ctx.send(error)
         else:
             raise error
 
