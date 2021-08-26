@@ -18,6 +18,9 @@ class Logs(commands.Cog):
         self.bot.loop.create_task(self._load_logschannels())
         self._logschannels = {}
 
+    def _format_overwrites(self,d:dict):
+        return "\n".join([f"{target.mention} : \n" + "\n".join([f"- {permission[0]} : {permission[1]}" for permission in overwrites if permission[1] is not None]) for target,overwrites in d.items()])
+
     async def _load_logschannels(self):
         await self.bot.wait_until_ready()
         async with self.bot.db.execute("SELECT * FROM logs_channels") as cursor:
@@ -199,33 +202,32 @@ class Logs(commands.Cog):
                 embed.add_field(name="New slowmode delay :",value=after.slowmode_delay)
             if before.overwrites != after.overwrites:
                 c += 1
-                before_overwrites = []
-                after_overwrites = []
-                for target, overwrites in before.overwrites.items():
-                    actual_overwrites = (target,)
-                    for permission in overwrites:
-                        actual_overwrites = actual_overwrites.__add__((permission,))
-                    before_overwrites.append(actual_overwrites)
-                for target, overwrites in after.overwrites.items():
-                    actual_overwrites = (target,)
-                    for permission in overwrites:
-                        actual_overwrites = actual_overwrites.__add__((permission,))
-                    after_overwrites.append(actual_overwrites)
-
-                print(before_overwrites)
-                print("\n\n")
-                print(after_overwrites)
-                print("\n\n\n\n\n")
-                removed_overwrites = set(before_overwrites).difference(after_overwrites)
-                added_overwrites = set(after_overwrites).difference(before_overwrites)
-                print(removed_overwrites)
-                print("\n\n")
-                print(added_overwrites)
-                """
-                if removed_overwrites:
-                    embed.add_field(name="Removed overwrites : ",value=", ".join([member.mention for member in removed_members]))
-                if added_overwrites:
-                    embed.add_field(name="Added overwrites : ",value=", ".join([member.mention for member in added_members]))"""
+                added_overwrites = {}
+                removed_overwrites = {}
+                edited_overwrites = {}
+                before_not_after = set(before.overwrites).difference(after.overwrites)
+                after_not_before = set(after.overwrites).difference(before.overwrites)
+                if len(before_not_after):
+                    for target in before_not_after:
+                        removed_overwrites[target] = before.overwrites[target]
+                    embed.add_field(name="Removed overwrites :",value=self._format_overwrites(removed_overwrites))
+                elif len(after_not_before):
+                    for target in after_not_before:
+                        added_overwrites[target] = after.overwrites[target]
+                    if len(added_overwrites):
+                        embed.add_field(name="Added overwrites :",value=self._format_overwrites(added_overwrites))
+                else:
+                    for target in before.overwrites:
+                        if target in before_not_after or target in after_not_before:
+                            continue
+                        before_overwrites = [overwrites for overwrites in before.overwrites[target]]
+                        after_overwrites = [overwrites for overwrites in after.overwrites[target]]
+                        after_overwrites_not_before = set(after_overwrites).difference(before_overwrites)
+                        if len(after_overwrites_not_before) == 0:
+                            continue
+                        edited_overwrites[target] = after_overwrites_not_before
+                    if len(edited_overwrites):
+                        embed.add_field(name="Edited overwrites :",value=edited_overwrites)
             if c == 1:
                 embed.title = "1 change."
             else:

@@ -535,7 +535,7 @@ class Moderation(commands.Cog):
             await ctx.send(f"{channel.mention} now has disabled commands !")
 
     @commands.group(invoke_without_command=True,aliases=["clear"],help="Deletes the last X messages from the channel.")
-    async def purge(self,ctx,Amount:int=2): #Delete "Amount" messages from the current channel. $purge [int]
+    async def purge(self,ctx,amount:int=2): #Delete "Amount" messages from the current channel. $purge [int]
         """
         Deletes a certain amount of message from the channel the command is used in. This command can have more detailed purge options, with the subcommands.
 
@@ -544,7 +544,7 @@ class Moderation(commands.Cog):
         """
         await ctx.message.delete()
         if ctx.invoked_subcommand is None:
-            purged_messages = await ctx.channel.purge(limit=int(Amount))
+            purged_messages = await ctx.channel.purge(limit=int(amount))
             return await ctx.send(f"Deleted : {len(purged_messages)} messages.",delete_after=10)
 
     @purge.command(help="A subcommand of `purge` function. Deletes ONLY commands in the last X messages.")
