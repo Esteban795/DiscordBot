@@ -1,4 +1,6 @@
 import asyncio
+from operator import add
+from os import name
 from discord.ext import commands
 import discord
 from datetime import datetime
@@ -17,6 +19,7 @@ class Logs(commands.Cog):
         self.bot = bot
         self.bot.loop.create_task(self._load_logschannels())
         self._logschannels = {}
+        self.emojis = {True:"\U00002705",False:"\U0000274c",None:"\U000025ab"}
 
     def _format_overwrites(self,d:dict):
         return "\n".join([f"{target.mention} : \n" + "\n".join([f"- {permission[0]} : {permission[1]}" for permission in overwrites if permission[1] is not None]) for target,overwrites in d.items()])
@@ -182,12 +185,40 @@ class Logs(commands.Cog):
         log_channel = self.bot.get_channel(log_channel_id)
         embed = discord.Embed(color=0xffaaaa,timestamp=datetime.utcnow())
         embed.description = f"Channel : {after.mention}"
+        c = 0
+        if before.name != after.name:
+            c += 1
+            embed.add_field(name="Old name : ",value=before.name)
+            embed.add_field(name="New name  :",value=after.mention)
+        if before.overwrites != after.overwrites:
+            c += 1
+            added_overwrites = {}
+            removed_overwrites = {}
+            edited_overwrites = {}
+            before_not_after = set(before.overwrites).difference(after.overwrites)
+            after_not_before = set(after.overwrites).difference(before.overwrites)
+            if len(before_not_after):
+                for target in before_not_after:
+                    removed_overwrites[target] = before.overwrites[target]
+                embed.add_field(name="Removed overwrites :",value=self._format_overwrites(removed_overwrites))
+            elif len(after_not_before):
+                for target in after_not_before:
+                    added_overwrites[target] = after.overwrites[target]
+                if len(added_overwrites):
+                    embed.add_field(name="Added overwrites :",value=self._format_overwrites(added_overwrites))
+            else:
+                for target in before.overwrites:
+                    if target in before_not_after or target in after_not_before:
+                        continue
+                    before_overwrites = [overwrites for overwrites in before.overwrites[target]]
+                    after_overwrites = [overwrites for overwrites in after.overwrites[target]]
+                    after_overwrites_not_before = set(after_overwrites).difference(before_overwrites)
+                    if len(after_overwrites_not_before) == 0:
+                        continue
+                    edited_overwrites[target] = after_overwrites_not_before
+                if len(edited_overwrites):
+                    embed.add_field(name="Edited overwrites :",value=self._format_overwrites(edited_overwrites))
         if isinstance(before,discord.TextChannel):
-            c = 0
-            if before.name != after.name:
-                c += 1
-                embed.add_field(name="Old name : ",value=before.name)
-                embed.add_field(name="New name  :",value=after.mention)
             if before.topic != after.topic:
                 c += 1
                 embed.add_field(name="Old topic : ",value=before.topic)
@@ -200,39 +231,131 @@ class Logs(commands.Cog):
                 c += 1
                 embed.add_field(name="Old slowmode delay : ",value=before.slowmode_delay)
                 embed.add_field(name="New slowmode delay :",value=after.slowmode_delay)
-            if before.overwrites != after.overwrites:
+        elif isinstance(before,discord.VoiceChannel):
+            if before.user_limit != after.user_limit:
                 c += 1
-                added_overwrites = {}
-                removed_overwrites = {}
-                edited_overwrites = {}
-                before_not_after = set(before.overwrites).difference(after.overwrites)
-                after_not_before = set(after.overwrites).difference(before.overwrites)
-                if len(before_not_after):
-                    for target in before_not_after:
-                        removed_overwrites[target] = before.overwrites[target]
-                    embed.add_field(name="Removed overwrites :",value=self._format_overwrites(removed_overwrites))
-                elif len(after_not_before):
-                    for target in after_not_before:
-                        added_overwrites[target] = after.overwrites[target]
-                    if len(added_overwrites):
-                        embed.add_field(name="Added overwrites :",value=self._format_overwrites(added_overwrites))
-                else:
-                    for target in before.overwrites:
-                        if target in before_not_after or target in after_not_before:
-                            continue
-                        before_overwrites = [overwrites for overwrites in before.overwrites[target]]
-                        after_overwrites = [overwrites for overwrites in after.overwrites[target]]
-                        after_overwrites_not_before = set(after_overwrites).difference(before_overwrites)
-                        if len(after_overwrites_not_before) == 0:
-                            continue
-                        edited_overwrites[target] = after_overwrites_not_before
-                    if len(edited_overwrites):
-                        embed.add_field(name="Edited overwrites :",value=edited_overwrites)
-            if c == 1:
-                embed.title = "1 change."
-            else:
-                embed.title = f"{c} changes."
-            return await log_channel.send(embed=embed)
-                
+                embed.add_field(name="Old users limit :",value=before.user_limit)
+                embed.add_field(name="New users limit :",value=after.user_limit)
+            if before.rtc_region != after.rtc_region:
+                c += 1
+                embed.add_field(name="Old voice channel region :",value=before.rtc_region)
+                embed.add_field(name="New voice channel region :",value=after.rtc_region)
+            if before.bitrate != after.bitrate:
+                c += 1
+                embed.add_field(name="Old bitrate :",value=f"{str(before.bitrate/1000)}kbps")
+                embed.add_field(name="New bitrate :",value=f"{str(after.bitrate/1000)}kbps") 
+        if c == 1:
+            embed.title = "1 change."
+        else:
+            embed.title = f"{c} changes."   
+        return await log_channel.send(embed=embed)
+    
+    @commands.Cog.listener()
+    async def on_member_join(self,member):
+        log_channel_id = self._log_channel_exists(member.guild.id)
+        log_channel = self.bot.get_channel(log_channel_id)
+        embed = discord.Embed(title=f"{member.mention} just joined.",color=0xffaaaa,timestamp=datetime.utcnow())
+        embed.set_author(name=member,icon_url=member.avatar_url)
+        return await log_channel.send(embed=embed)
+
+    @commands.Cog.listener()
+    async def on_member_remove(self,member):
+        log_channel_id = self._log_channel_exists(member.guild.id)
+        log_channel = self.bot.get_channel(log_channel_id)
+        embed = discord.Embed(title=f"{member.mention} just left the server.",color=0xffaaaa,timestamp=datetime.utcnow())
+        embed.set_author(name=member,icon_url=member.avatar_url)
+        return await log_channel.send(embed=embed)
+
+    @commands.Cog.listener()
+    async def on_member_update(self,before,after):
+        log_channel_id = self._log_channel_exists(before.guild.id)
+        log_channel = self.bot.get_channel(log_channel_id)
+        embed = discord.Embed(title="Member updated.",color=0xffaaaa,timestamp=datetime.utcnow())
+        embed.set_author(name=after,icon_url=after.avatar_url)
+        if before.display_name != after.display_name:
+            embed.add_field(name="Old nickname :",value=before.display_name)
+            embed.add_field(name="New nickname :",value=after.display_name)
+        if before.roles != after.roles:
+            before_not_after = set(before.roles).difference(after.roles)
+            if len(before_not_after):
+                embed.add_field(name="Removed roles :",value=", ".join([role.mention for role in before_not_after]))
+            after_not_before = set(after.roles).difference(before.roles)
+            if len(after_not_before):
+                embed.add_field(name="New roles :",value=", ".join([role.mention for role in after_not_before]))
+        if len(embed.fields) == 0:
+            return
+        return await log_channel.send(embed=embed)
+    
+    @commands.Cog.listener()
+    async def on_guild_role_create(self,role):
+        log_channel_id = self._log_channel_exists(role.guild.id)
+        log_channel = self.bot.get_channel(log_channel_id)
+        embed = discord.Embed(title="Role created.",color=0xffaaaa,timestamp=datetime.utcnow())
+        embed.description = f"{role.mention} was created."
+        return await log_channel.send(embed=embed)
+
+    @commands.Cog.listener()
+    async def on_guild_role_delete(self,role):
+        log_channel_id = self._log_channel_exists(role.guild.id)
+        log_channel = self.bot.get_channel(log_channel_id)
+        embed = discord.Embed(title="Role deleted.",color=0xffaaaa,timestamp=datetime.utcnow())
+        embed.description = f"{role.mention} was deleted."
+        return await log_channel.send(embed=embed)
+
+    @commands.Cog.listener()
+    async def on_guild_role_update(self,before,after):
+        log_channel_id = self._log_channel_exists(before.guild.id)
+        log_channel = self.bot.get_channel(log_channel_id)
+        embed = discord.Embed(title="Role updated.",color=0xffaaaa,timestamp=datetime.utcnow())
+        c = 0
+        if before.name != after.name:
+            c += 1
+            embed.add_field(name="Old name :",value=before.name)
+            embed.add_field(name="New name :",value=after.name)
+        if before.permissions != after.permissions:
+            c += 1
+            before_not_after = set(before.permissions).difference(after.permissions)
+            after_not_before = set(after.permissions).difference(before.permissions)
+            if len(before_not_after):
+                embed.add_field(name="Removed permissions :",value="\n".join([f"{permission} : {self.emojis[value]}" for permission,value in before_not_after]))
+            if len(after_not_before):
+                embed.add_field(name="New permissions :",value="\n".join([f"{permission} : {self.emojis[value]}" for permission,value in before_not_after]))
+        if before.colour != after.colour:
+            embed.color = after.color
+            embed.description = "New color, see the embed color on the left !"
+        return await log_channel.send(embed=embed)
+    
+    @commands.Cog.listener()
+    async def on_member_ban(self,guild,user):
+        log_channel_id = self._log_channel_exists(guild.id)
+        log_channel = self.bot.get_channel(log_channel_id)
+        embed = discord.Embed(title="Member banned.",color=0xffaaaa,timestamp=datetime.utcnow())
+        embed.set_author(name=user.mention,icon_url=user.avatar_url)
+        msg = await log_channel.send(embed=embed)
+        await asyncio.sleep(10)
+        while True:
+            ban = await guild.audit_logs(limit=1,action=discord.AuditLogAction.ban).flatten()
+            if ban[0].target == user:
+                break
+        embed.add_field(name="Banned by :",value=ban[0].user)
+        embed.add_field(name="Reason :",value=ban[0].reason)
+        return await msg.edit(embed=embed)
+
+    @commands.Cog.listener()
+    async def on_member_unban(self,guild,user):
+        log_channel_id = self._log_channel_exists(guild.id)
+        log_channel = self.bot.get_channel(log_channel_id)
+        embed = discord.Embed(title="Member unbanned.",color=0xffaaaa,timestamp=datetime.utcnow())
+        embed.set_author(name=user.mention,icon_url=user.avatar_url)
+        msg = await log_channel.send(embed=embed)
+        await asyncio.sleep(10)
+        while True:
+            ban = await guild.audit_logs(limit=1,action=discord.AuditLogAction.unban).flatten()
+            if ban[0].target == user:
+                break
+        embed.add_field(name="Banned by :",value=ban[0].user)
+        embed.add_field(name="Reason :",value=ban[0].reason)
+        return await msg.edit(embed=embed)
+
 def setup(bot):
     bot.add_cog(Logs(bot))
