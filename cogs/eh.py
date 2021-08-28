@@ -63,6 +63,8 @@ class ErrorHandler(commands.Cog):
             pass
         elif isinstance(error,LogChannelNotFound):
             return await ctx.send(error)
+        elif isinstance(error,IgnoredLogChannelNotFound):
+            pass
         else:
             raise error
 

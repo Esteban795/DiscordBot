@@ -127,6 +127,7 @@ class XPSystem(commands.Cog):
             await ctx.send("Subcommand required.")
 
     @reset.command()
+    @commands.has_permissions(administrator=True)
     async def all(self,ctx):
         try:
             await ctx.send("This will delete E.V.E.R.Y existing datas about people's rank on your server. No backup possible ! Type 'yes' to continue.")
@@ -139,6 +140,7 @@ class XPSystem(commands.Cog):
                 await self.bot.db.commit()
     
     @reset.command()
+    @commands.has_permissions(administrator=True)
     async def member(self,ctx,member:discord.Member=None):
         member = member or ctx.author
         try:

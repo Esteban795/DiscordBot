@@ -55,12 +55,13 @@ class Reminder(commands.Cog):
         async with self.bot.db.execute(sql) as cursor:
             async for row in cursor:
                 await self.reminder_task(row)
+
     @commands.command()
     async def remind(self,ctx,time:TimeConverter,*,reminder):
-        remind_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=time)
+        remind_time = (datetime.datetime.utcnow() + datetime.timedelta(seconds=time)).replace(microsecond=0)
         await self.bot.db.execute("INSERT INTO reminders(member_id,guild_id,channel_id,reminder,remind_time) VALUES(?,?,?,?,?);",(ctx.author.id,ctx.guild.id,ctx.channel.id,reminder,remind_time.replace(microsecond=0)))
         await self.bot.db.commit()
-        await ctx.send(f"Alright, {ctx.author.mention}, see you soon !")
+        await ctx.send(f"Alright, {ctx.author.mention}, <t:{int(remind_time.timestamp())}:f> !")
                     
     @commands.group(invoke_without_command=True,aliases=["todos"])
     async def todo(self,ctx,todo:typing.Union[int,str]=None):
