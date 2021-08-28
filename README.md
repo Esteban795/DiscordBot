@@ -29,4 +29,4 @@ BOT_TOKEN = [your bot token]
 
 
 
-Not up to date. I will work on readme soon enough.
+# SINCE DPY CAME TO AN END, THIS REPO IS ARCHIVED.
