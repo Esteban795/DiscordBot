@@ -1,0 +1,13 @@
+aiohttp==3.7.4.post0
+aiosqlite==0.17.0
+async-timeout==3.0.1
+asyncspotify==0.12.1
+discord-ext-menus==1.0.0a31+gfbb8803
+discord.py==1.7.3
+fuzzywuzzy==0.18.0
+opencv-python==4.5.4.60
+Pillow==8.4.0
+pycparser==2.21
+PyNaCl==1.4.0
+python-dotenv==0.19.2
+youtube-dl==2021.6.6
